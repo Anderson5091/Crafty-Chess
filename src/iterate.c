@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 09/16/96 */
+/* last modified 04/06/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -22,7 +21,7 @@ int Iterate(int wtm, int search_type)
   int i, value=0, time_used;
   int twtm, used_w, used_b;
   int cpu_start, cpu_end;
-  int material=0;
+  int correct, correct_count, material=0;
 
 /*
  ----------------------------------------------------------
@@ -31,12 +30,12 @@ int Iterate(int wtm, int search_type)
 |                                                          |
  ----------------------------------------------------------
 */
+  correct_count=0;
   burp=15*100;
-  transposition_id=(++transposition_id)&3;
+  transposition_id=(++transposition_id)&7;
+  if (!transposition_id) transposition_id++;
   time_abort=0;
   abort_search=0;
-  search_failed_high=0;
-  search_failed_low=0;
   program_start_time=GetTime(time_type);
   start_time=GetTime(time_type);
   cpu_start=GetTime(cpu);
@@ -47,8 +46,10 @@ int Iterate(int wtm, int search_type)
   next_time_check=nodes_between_time_checks;
   evaluations=0;
 #if !defined(FAST)
-  transposition_hashes=0;
-  pawn_hashes=0;
+  transposition_hits=0;
+  transposition_probes=0;
+  pawn_probes=0;
+  pawn_hits=0;
 #endif
   tb_probes=0;
   tb_probes_successful=0;
@@ -57,10 +58,6 @@ int Iterate(int wtm, int search_type)
   passed_pawn_extensions_done=0;
   one_reply_extensions_done=0;
   root_wtm=wtm;
-  root_white_pieces=TotalWhitePieces;
-  root_white_pawns=TotalWhitePawns;
-  root_black_pieces=TotalBlackPieces;
-  root_black_pawns=TotalBlackPawns;
   PreEvaluate(wtm);
 /*
  ----------------------------------------------------------
@@ -74,12 +71,13 @@ int Iterate(int wtm, int search_type)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (search_type != booking) RootMoveList(wtm);
+  if (search_type!=booking && search_type!=annotate) RootMoveList(wtm);
   if (last[0] == last[1]) {
     program_end_time=GetTime(time_type);
     pv[0].path_length=0;
+    pv[0].path_iteration_depth=10;
     if (Check(wtm)) {
-      root_value=-MATE;
+      root_value=-(MATE-1);
       last_search_value=-(MATE-1);
     }
     else {
@@ -92,11 +90,12 @@ int Iterate(int wtm, int search_type)
     q_nodes_searched=0;
     return(root_value);
   }
-  if (last[0] == (last[1]-1) && search_type != booking) {
+  if (last[0] == (last[1]-1) && search_type != booking && !pondering &&
+      annotate_mode==0) {
     program_end_time=GetTime(time_type);
     pv[0].path_length=1;
     pv[0].path_hashed=0;
-    pv[0].path_iteration_depth=0;
+    pv[0].path_iteration_depth=10;
     pv[0].path[1]=*last[0];
     nodes_searched=1;
     q_nodes_searched=0;
@@ -109,7 +108,16 @@ int Iterate(int wtm, int search_type)
       Print(2,"                       (only move)   ");
       Print(2," %s\n",OutputMove(last[0],1,wtm));
     }
-    return(0);
+    if (last_search_value > MATE-200) {
+      last_search_value+=2;
+      return(last_search_value);
+    }
+    else if (last_search_value < -MATE+200) {
+      last_search_value-=2;
+      return(last_search_value);
+    }
+    else
+      return(last_search_value);
   }
 /*
  ----------------------------------------------------------
@@ -136,11 +144,21 @@ int Iterate(int wtm, int search_type)
     iteration_depth=last_pv.path_iteration_depth+1;
   Print(2,"              depth   time   score    variation (%d)\n",
         iteration_depth);
+  book_move=0;
   if ((search_type==booking) || !Book(wtm)) {
     program_start_time=GetTime(time_type);
     start_time=GetTime(time_type);
     cpu_start=GetTime(cpu);
     elapsed_start=GetTime(elapsed);
+/*
+ ----------------------------------------------------------
+|                                                          |
+|   now install the learned position information in the    |
+|   hash table.                                            |
+|                                                          |
+ ----------------------------------------------------------
+*/
+    LearnPositionLoad();
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -152,7 +170,7 @@ int Iterate(int wtm, int search_type)
     if (iteration_depth > 1) {
       twtm=wtm;
       pv[0]=last_pv;
-      for (i=1;i<=last_pv.path_length;i++) {
+      for (i=1;i<=(int) last_pv.path_length;i++) {
         pv[i]=pv[i-1];
         StorePV(i, twtm);
         MakeMove(i,last_pv.path[i],twtm);
@@ -162,9 +180,9 @@ int Iterate(int wtm, int search_type)
         twtm=ChangeSide(twtm);
         UnMakeMove(i,last_pv.path[i],twtm);
       }
-      root_alpha=last_value-400;
-      root_value=last_value-400;
-      root_beta=last_value+400;
+      root_alpha=last_value-300;
+      root_value=last_value-300;
+      root_beta=last_value+300;
     }
     else {
       root_alpha=-MATE-1;
@@ -182,20 +200,29 @@ int Iterate(int wtm, int search_type)
       search_failed_high=0;
       search_failed_low=0;
       if (nodes_searched) {
-        nodes_between_time_checks=nodes_per_second/
-                                  (Max(q_nodes_searched/nodes_searched,1)+1);
+        nodes_between_time_checks=nodes_per_second;
         nodes_between_time_checks=Min(nodes_between_time_checks,200000);
-        if (time_limit < 200) nodes_between_time_checks/=20;
-        if (time_limit > 3000) nodes_between_time_checks*=3;
-        nodes_between_time_checks=Max(nodes_between_time_checks,2000);
+	if (!analyze_mode) {
+          if (time_limit>300 && !auto232);
+	  else if (time_limit>100 || auto232) nodes_between_time_checks/=10;
+	  else if (time_limit > 50) nodes_between_time_checks/=20;
+          else nodes_between_time_checks/=100;
+	} else {
+/*
+   Do this to get fast response time in analyze mode
+*/
+	  nodes_between_time_checks=4000;
+	}
+	  
       }
       while (!time_abort && !abort_search) {
-        value=SearchRoot(root_alpha, root_beta, wtm, iteration_depth, 1);
+        value=SearchRoot(root_alpha, root_beta, wtm,
+                         iteration_depth*INCREMENT_PLY, 1);
         if (value >= root_beta) {
           search_failed_high=1;
           root_alpha=root_beta-1;
           root_value=root_alpha;
-          root_beta=100000;
+          root_beta=MATE+1;
           searched_this_root_move[0]=0;
         }
         else if (value <= root_alpha) {
@@ -203,13 +230,15 @@ int Iterate(int wtm, int search_type)
             for (mvp=last[0];mvp<last[1];mvp++)
               searched_this_root_move[mvp-last[0]]=0;
             search_failed_low=1;
-            root_alpha=-100000;
+            root_alpha=-MATE-1;
             root_value=root_alpha;
             easy_move=0;
             if (((nodes_searched+q_nodes_searched) > noise_level) && 
                 (!time_abort && !abort_search)) {
               Print(2,"               %2i   %s      --   ",iteration_depth,
                     DisplayTime(GetTime(time_type)-start_time));
+	      if ( xboard && analyze_mode )
+		Print(0, "--\n" );
               Print(2," %s\n",OutputMove(last[0],1,wtm));
             }
           }
@@ -218,8 +247,28 @@ int Iterate(int wtm, int search_type)
         else
           break;
       }
-      if ((root_value > root_alpha) && (root_value < root_beta)) 
+      if (root_value>root_alpha && root_value<root_beta) 
         last_search_value=root_value;
+/*
+ ----------------------------------------------------------
+|                                                          |
+|   if we are running a test suite, check to see if we can |
+|   exit the search.  this happens when N successive       |
+|   iterations produce the correct solution.  N is set by  |
+|   the test command in Option().                          |
+|                                                          |
+ ----------------------------------------------------------
+*/
+      correct=solution_type;
+      for (i=0;i<number_of_solutions;i++) {
+        if (!solution_type) {
+          if (solutions[i] == pv[1].path[1]) correct=1;
+        }
+        else
+          if (solutions[i] == pv[1].path[1]) correct=0;
+      }
+      if (correct) correct_count++;
+      else correct_count=0;
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -232,13 +281,19 @@ int Iterate(int wtm, int search_type)
 */
       twtm=wtm;
       end_time=GetTime(time_type);
+      cpu_end=GetTime(cpu)-cpu_start;
+      cpu_end=(cpu_end > 0) ? cpu_end : 1;
+      if (cpu_end > 100)
+        nodes_per_second=((BITBOARD) nodes_searched +
+                          (BITBOARD) q_nodes_searched)*100/(BITBOARD) cpu_end;
       if (value != -(MATE-1)) {
         buffer[0]=0;
-        for (i=1;i<=pv[1].path_length;i++) {
+        for (i=1;i<=(int) pv[1].path_length;i++) {
           pv[i+1]=pv[i];
           if (!time_abort && !abort_search && 
-              (((nodes_searched+q_nodes_searched) > noise_level) ||
-              (value > (MATE-100)))) {
+              (nodes_searched+q_nodes_searched > noise_level ||
+               value > MATE-100 ||
+               correct_count >= early_exit)) {
             sprintf(buffer+strlen(buffer)," %s",OutputMove(&pv[1].path[i],i,twtm));
           }
           if(!time_abort && !abort_search) StorePV(i, twtm);
@@ -256,8 +311,9 @@ int Iterate(int wtm, int search_type)
       else if(pv[1].path_hashed == 2) 
         sprintf(buffer+strlen(buffer)," <EGTB>");
       if (!time_abort && !abort_search && 
-          (((nodes_searched+q_nodes_searched) > noise_level) ||
-           (value > (MATE-100)) || (pv[1].path_hashed==2) )) {
+          (nodes_searched+q_nodes_searched > noise_level ||
+           correct_count >= early_exit ||
+           value > MATE-100 || pv[1].path_hashed==2)) {
         Whisper(5,iteration_depth,end_time-start_time,whisper_value,
                 nodes_searched+q_nodes_searched,0,buffer);
         Print(3,"               %2i-> %s%s   ",iteration_depth,
@@ -275,15 +331,16 @@ int Iterate(int wtm, int search_type)
             Print(2,"                                      ");
         } while(bufftemp);
       }
-      root_alpha=value-400;
+      root_alpha=value-300;
       root_value=root_alpha;
-      root_beta=value+400;
+      root_beta=value+300;
       if ((iteration_depth > 1) && (value > MATE-100) &&
           (value > last_mate_score)) break;
       if ((iteration_depth >= search_depth) && search_depth) break;
       if (time_abort || abort_search) break;
       end_time=GetTime(time_type)-start_time;
       if (thinking && (end_time >= time_limit)) break;
+      if (correct_count >= early_exit) break;
     }
 /*
  ----------------------------------------------------------
@@ -297,8 +354,8 @@ int Iterate(int wtm, int search_type)
     used_b=0;
 #if !defined(FAST)
     for (i=0;i<hash_table_size;i++) {
-      if (Shiftr((trans_ref_ba+i)->word1,62) == transposition_id) used_b++;
-      if (Shiftr((trans_ref_wa+i)->word1,62) == transposition_id) used_w++;
+      if (Shiftr((trans_ref_ba+i)->word1,61) == transposition_id) used_b++;
+      if (Shiftr((trans_ref_wa+i)->word1,61) == transposition_id) used_w++;
     }
 #endif
     end_time=GetTime(time_type);
@@ -327,10 +384,9 @@ int Iterate(int wtm, int search_type)
       Print(6,"              endgame tablebase-> probes done: %d  successful: %d\n",
             tb_probes, tb_probes_successful);
 #if !defined(FAST)
-      Print(6,"              hashing-> trans/ref:%d%%  pawn:%d%%\n",
-            100*transposition_hashes/(nodes_searched+q_nodes_searched),
-            100*pawn_hashes/evaluations);
-      Print(6,"              hashing-> used:w%d%% b%d%%\n",
+      Print(6,"              hashing-> trans/ref:%d%%  pawn:%d%%  used:w%d%% b%d%%\n",
+            100*transposition_hits/(transposition_probes+1),
+            100*pawn_hits/(pawn_probes+1),
             used_w*100/(hash_table_size+1), used_b*100/(hash_table_size+1));
 #endif
     }
@@ -338,10 +394,9 @@ int Iterate(int wtm, int search_type)
   else {
     root_value=0;
     last_search_value=0;
-    last_move_in_book=move_number;
+    book_move=1;
   }
   program_end_time=GetTime(time_type);
-  if (abs(last_search_value) > (MATE-100)) last_mate_score=last_search_value;
   pv[0]=pv[1];
   return(last_search_value);
 }

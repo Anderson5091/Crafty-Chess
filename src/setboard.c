@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 06/23/96 */
+/* last modified 04/16/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -46,19 +45,21 @@
 *                                                                              *
 ********************************************************************************
 */
-void SetBoard(void)
+void SetBoard(FILE *input_stream, int special)
 {
   int i, match, num, pos, square, tboard[64];
-  int bcastle, ep, twtm, wcastle;
+  int bcastle, ep, wcastle;
   char input[80];
   char bdinfo[] = {'q','r','b','*','k','n','p','*','P','N','K','*','B','R',
                    'Q','*', '1','2','3','4','5','6','7','8','/'};
   char status[13]={'K','Q','k','q','a','b','c','d','e','f','g','h',' '};
   int whichsq, firstsq[8]={56,48,40,32,24,16,8,0};
 
-  fgets(input,80,input_stream);
-  if (input_stream != stdin) Print(0,"%s\n",input);
-  else if (log_file) fprintf(log_file,"%s\n",input);
+  if (special)
+    strcpy(input,initial_position);
+  else
+    fgets(input,80,input_stream);
+  if (log_file) fprintf(log_file,"%s\n",input);
   input[strlen(input)-1]='\0';
   for (i=0;i<64;i++) tboard[i]=0;
   for (pos=0;(pos<(int) strlen(input)) && (input[pos]==' ');pos++);
@@ -121,13 +122,13 @@ void SetBoard(void)
 |                                                          |
  ----------------------------------------------------------
 */
-  twtm=0;
+  wtm=0;
   ep=0;
   wcastle=0;
   bcastle=0;
   for (pos++;(pos<(int) strlen(input)) && (input[pos]==' ');pos++);
-  if (input[pos]=='w') twtm=1;
-  else if (input[pos]=='b') twtm=0;
+  if (input[pos]=='w') wtm=1;
+  else if (input[pos]=='b') wtm=0;
   else printf("side to move is bad\n");
   for (pos++;(pos<(int) strlen(input)) && (input[pos]==' ');pos++);
   for (;pos<(int) strlen(input);pos++) {
@@ -141,14 +142,12 @@ void SetBoard(void)
       pos++;
     }
     else if (match == 12) continue;
-    else /*printf("position ok, color/castle/enpassant is bad.\n");*/;
+    else printf("position ok, color/castle/enpassant is bad.\n");
   }
   for (i=0;i<64;i++) PieceOnSquare(i)=tboard[i];
   WhiteCastle(0)=wcastle;
   BlackCastle(0)=bcastle;
   EnPassant(0)=ep;
-  wtm=twtm;
-  SetChessBitBoards(&position[0]);
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -161,23 +160,24 @@ void SetBoard(void)
   if (((WhiteCastle(0) & 2) && (PieceOnSquare(0) != rook)) ||
       ((WhiteCastle(0) & 1) && (PieceOnSquare(7) != rook)) ||
       ((BlackCastle(0) & 2) && (PieceOnSquare(56) != -rook)) ||
-      ((BlackCastle(0) & 1) && (PieceOnSquare(63) != -rook)) ||
-      (wtm && EnPassant(0) && (PieceOnSquare(EnPassant(0)+8) != -pawn) &&
+      ((BlackCastle(0) & 1) && (PieceOnSquare(63) != -rook))) {
+    printf("ERROR-- castling status does not match board position\n");
+    InitializeChessBoard(&position[0]);
+  }
+  if ((wtm && EnPassant(0) && (PieceOnSquare(EnPassant(0)+8) != -pawn) &&
        (PieceOnSquare(EnPassant(0)-7) != pawn) &&
        (PieceOnSquare(EnPassant(0)-9) != pawn)) ||
       (ChangeSide(wtm) && EnPassant(0) && (PieceOnSquare(EnPassant(0)-8) != pawn) &&
        (PieceOnSquare(EnPassant(0)+7) != -pawn) &&
        (PieceOnSquare(EnPassant(0)+9) != -pawn))) {
-    printf("ERROR-- enpassant or castling status don't match board position\n");
-    InitializeChessBoard(&position[0]);
+    EnPassant(0)=0;
   }
+  SetChessBitBoards(&position[0]);
   if (log_file) DisplayChessBoard(log_file,search);
-  repetition_head_b=repetition_list_b;
-  repetition_head_w=repetition_list_w;
-  if (wtm)
-    *repetition_head_w++=HashKey;
-  else
-    *repetition_head_b++=HashKey;
+  rephead_b=replist_b;
+  rephead_w=replist_w;
+  if (wtm) *rephead_w++=HashKey;
+  else *rephead_b++=HashKey;
   position[0].rule_50_moves=0;
   last_mate_score=0;
   for (i=0;i<4096;i++) {
@@ -185,10 +185,21 @@ void SetBoard(void)
     history_b[i]=0;
   }
   for (i=0;i<MAXPLY;i++) {
-    killer_move[i][0]=0;
-    killer_move[i][1]=0;
-    killer_move_count[i][0]=0;
-    killer_move_count[i][1]=0;
+    killer_move1[i]=0;
+    killer_move2[i]=0;
+    killer_count1[i]=0;
+    killer_count2[i]=0;
   }
-  last_move_in_book=move_number;
+  last_pv.path_iteration_depth=0;
+  last_pv.path_length=0;
+  pv[0].path_iteration_depth=0;
+  pv[0].path_length=0;
+  moves_out_of_book=0;
+  learning&=~book_learning;
+  largest_positional_score=1000;
+  largest_king_safety_score=1000;
+  opening=0;
+  middle_game=1;
+  end_game=0;
+  avoid_pondering=1;
 }

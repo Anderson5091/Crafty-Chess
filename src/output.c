@@ -1,17 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 06/03/96 */
+/* last modified 03/10/97 */
 /*
 ********************************************************************************
 *                                                                              *
 *   OutputMove() is responsible for converting the internal move format to a   *
 *   string that can be displayed.  first, it simply converts the from/to       *
-*   squares to fully-qualified algebraic (which includes o-o and o-o-o for     *
+*   squares to fully-qualified algebraic (which includes O-O and O-O-O for     *
 *   castling moves).  next, we try several "shortcut" forms and call           *
 *   input_move(silent=1) to let it silently check the move for uniqueness.     *
 *   as soon as we get a non-ambiguous move, we return that text string.        *
@@ -40,12 +39,12 @@ char* OutputMove(int *move, int ply, int wtm)
   if ((Piece(*move) == king) &&
       (abs(From(*move)-To(*move)) == 2)) {
     if (wtm) {
-      if (To(*move) == 2) strcpy(text,"o-o-o");
-      else strcpy(text,"o-o");
+      if (To(*move) == 2) strcpy(text,"O-O-O");
+      else strcpy(text,"O-O");
     }
     else {
-      if (To(*move) == 58) strcpy(text,"o-o-o");
-      else strcpy(text,"o-o");
+      if (To(*move) == 58) strcpy(text,"O-O-O");
+      else strcpy(text,"O-O");
     }
     return(text);
   }
@@ -71,8 +70,8 @@ char* OutputMove(int *move, int ply, int wtm)
   position[MAXPLY]=position[ply];
   MakeMove(MAXPLY, *move, wtm);
   if (Check(ChangeSide(wtm))) {
-    mvp=GenerateCheckEvasions(1, ChangeSide(wtm), move_list+9000);
-    if (mvp == (move_list+9000))
+    mvp=GenerateCheckEvasions(1, ChangeSide(wtm), move_list+4800);
+    if (mvp == (move_list+4800))
       *text++='#';
     else
       *text++='+';
@@ -158,7 +157,7 @@ char* OutputMove(int *move, int ply, int wtm)
   }
 }
 
-/* last modified 06/03/96 */
+/* last modified 03/10/97 */
 /*
 ********************************************************************************
 *                                                                              *

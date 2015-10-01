@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
 /* last modified 09/27/96 */
@@ -34,8 +33,6 @@ void TimeAdjust(int time_used, PLAYER player)
                        time_used : tc_time_remaining;
     if (!tc_moves_remaining) {
       if (tc_sudden_death == 2) tc_sudden_death=1;
-      tc_moves+=tc_secondary_moves;
-      tc_time+=tc_secondary_time;
       tc_moves_remaining+=tc_secondary_moves;
       tc_time_remaining+=tc_secondary_time;
       tc_time_remaining_opponent+=tc_secondary_time;
@@ -50,7 +47,7 @@ void TimeAdjust(int time_used, PLAYER player)
   }
 }
 
-/* last modified 09/02/96 */
+/* last modified 11/06/96 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -95,15 +92,15 @@ int TimeCheck(int abort)
  ----------------------------------------------------------
 */
   time_used=(GetTime(time_type)-start_time);
-  if ((nodes_searched+q_nodes_searched) > noise_level &&
-      verbosity_level >= 9 && time_used>burp) {
+  if (nodes_searched+q_nodes_searched>noise_level &&
+      verbosity_level>=9 && time_used>burp) {
     printf("               %2i   %s\r",iteration_depth,DisplayTime(time_used));
     burp=(time_used/1500)*1500+1500;
     fflush(stdout);
   }
   if (search_depth || pondering || analyze_mode) return(0);
   if (easy_move && !search_time_limit) {
-    if ((time_limit > 100) && (time_used < time_limit/3)) return (0);
+    if (time_limit>100 && time_used<time_limit/3) return (0);
   }
   else if (time_used < time_limit) return(0);
   if (search_time_limit) return(1);
@@ -112,21 +109,7 @@ int TimeCheck(int abort)
  ----------------------------------------------------------
 |                                                          |
 |   ok.  we have used "time_limit" at this point.  now the |
-|   question is, can we stop the search?  if the current   |
-|   evaluation is not significantly worse than the last    |
-|   evaluation (from the previous iteration...) then we    |
-|   safely stop the search.                                |
-|                                                          |
- ----------------------------------------------------------
-*/
-  value=root_value;
-  last_value=last_search_value;
-  if (((value >= last_value-333) && !search_failed_low ) || ((value>3500 && (value >= last_value-667)))) {/*if we're up by piece we need more than 667 point fal to increase time*/
-    if (time_used > time_limit*2) return(1);
-    else return(abort);
-  }
-/*
- ----------------------------------------------------------
+|   question is, can we stop the search?                   |
 |                                                          |
 |   first, make sure that we have actually found a score   |
 |   at the root of the tree.  if not, we can safely stop   |
@@ -139,6 +122,25 @@ int TimeCheck(int abort)
     for (i=last[0];i<last[1];i++)
       if (searched_this_root_move[i-last[0]]) searched++;
     if (searched == 1) return(1);
+  }
+/*
+ ----------------------------------------------------------
+|                                                          |
+|   we have a score at the root of the tree, if the        |
+|   evaluation is not significantly worse than the last    |
+|   evaluation (from the previous iteration...) then we    |
+|   safely stop the search.  note also that if the current |
+|   evaluation is quite a bit worse, but we are still way  |
+|   ahead, we can still avoid using extra time.            |
+|                                                          |
+ ----------------------------------------------------------
+*/
+  value=root_value;
+  last_value=last_search_value;
+  if ((value>=last_value-333 && !search_failed_low) ||
+      (value>3500 && value >= last_value-667)) {
+    if (time_used > time_limit*2) return(1);
+    else return(abort);
   }
 /*
  ----------------------------------------------------------
@@ -168,7 +170,7 @@ int TimeCheck(int abort)
   return(1);
 }
 
-/* last modified 09/29/96 */
+/* last modified 11/06/96 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -182,9 +184,11 @@ int TimeCheck(int abort)
 */
 void TimeSet(int search_type)
 {
+  float behind[6] = {32.0, 16.0, 8.0, 4.0, 2.0, 1.5};
+  int reduce[6] = {96, 48, 24, 12, 6, 3};
   int last_value, test_time_limit;
   float u_time,u_otime;
-  int adjust=0;
+  int i, adjust=0;
   float percent_adjust=0.0;
   
   last_value=last_search_value;
@@ -203,53 +207,64 @@ void TimeSet(int search_type)
   if (tc_sudden_death == 1) {
     if (xboard) {
 /*
-    for tuning down time_usage -  but we still want to keep the usage up-
-     if we're ahead in time.
+    for tuning down time_usage -  but we still want
+    to keep the usage up- if we're ahead in time.
 */
       if (tc_time_remaining>tc_time_remaining_opponent &&  
           last_value <6000 && move_number>5 && u_time>3000) {
-        usage_time=((float)Min((((Max(u_time,1.0)/Max(u_otime,1.0))-1.0)*50.0),50.0)); 
+        usage_time=((float)Min((((Max(u_time,1.0)/
+                   Max(u_otime,1.0))-1.0)*50.0),50.0)); 
         adjust=1;
         percent_adjust=usage_time;
       }
 /*
-     We do have an increment.  If behind in time, we decraese usage for moves
-     20>60.  As long as we are within 2/3 of pawn  After move 60. with
-     increment; we're not interested in any further time usage reductions.
+     We do have an increment.  If behind in time, we
+     decraese usage for moves 20>60.  As long as we are
+     within 2/3 of pawn  After move 60. with increment;
+     we're not interested in any further time usage
+     reductions.
 */
       else if (tc_time_remaining<tc_time_remaining_opponent &&
-               move_number>20 &&  move_number<60 && last_value >-667 && (tc_increment)) {
-       usage_time=((float)Max((((Max(u_time,1.0)/Max(u_otime,1.0))-1.0)*50.0),-20.0));
+               move_number>20 &&  move_number<60 &&
+               last_value >-667 && tc_increment) {
+       usage_time=((float)Max((((Max(u_time,1.0)/
+                  Max(u_otime,1.0))-1.0)*50.0),-20.0));
         adjust=2;
         percent_adjust=usage_time;
       }
 /*
-    w/ zero increment - we need to be more aggresive about tuning down
-    time usage.
+    w/ zero increment - we need to be more aggresive
+    about tuning down time usage.
 */
-      else if (tc_time_remaining<tc_time_remaining_opponent && move_number>20 &&
-               move_number<50 && last_value >-667 && (!tc_increment)) {
-        usage_time=((float)Max((((Max(u_time,1.0)/Max(u_otime,1.0))-1.0)*50.0),-20.0));
+      else if (tc_time_remaining<tc_time_remaining_opponent &&
+               move_number>20 && move_number<50 && last_value >-667 &&
+               !tc_increment) {
+        usage_time=((float)Max((((Max(u_time,1.0)/
+                   Max(u_otime,1.0))-1.0)*50.0),-20.0));
         adjust=3;
         percent_adjust=usage_time;
       }
 /*
-    at this point we may be lost anyway - but we want to ensure that we don't
-    get beat on time but we don't cut time_limit by more than 50%.
+    at this point we may be lost anyway - but we want
+    to ensure that we don't get beat on time but we don't
+    cut time_limit by more than 50%.
 */
       else if (tc_time_remaining<tc_time_remaining_opponent  &&
                move_number>49  && move_number< 80 &&  last_value >-5000 &&
                !tc_increment) {
-        usage_time=((float)Max((((Max(u_time,1.0)/Max(u_otime,1.0))-1.0)*50.0),-40.0));
+        usage_time=((float)Max((((Max(u_time,1.0)/
+                   Max(u_otime,1.0))-1.0)*50.0),-40.0));
         adjust=4;
         percent_adjust=usage_time;
       }
 /*
     final tune-down.
 */
-      else if (tc_time_remaining<tc_time_remaining_opponent && move_number>79 &&
-               last_value >-5000 && (!tc_increment) && u_time<3000) {
-        usage_time=((float)Max((((Max(u_time,1.0)/Max(u_otime,1.0))-1.0)*100.0),-50.0));
+      else if (tc_time_remaining<tc_time_remaining_opponent &&
+               move_number>79 && last_value >-5000 && (!tc_increment)
+               && u_time<3000) {
+        usage_time=((float)Max((((Max(u_time,1.0)/
+                   Max(u_otime,1.0))-1.0)*100.0),-50.0));
         Print(1,"case 5 auto usage %7.1f percent/(-)decrease\n",usage_time);
         adjust=5;
         percent_adjust=usage_time;
@@ -257,7 +272,7 @@ void TimeSet(int search_type)
       else
         usage_time=0;
     }
-    time_divisor=Max(move_limit-move_number,2);
+    time_divisor=(move_number < move_limit-30) ? move_limit-move_number : 30;
     if (tc_increment) {
 /*
     in case 0 * game.
@@ -276,7 +291,7 @@ void TimeSet(int search_type)
       absolute_time_limit=time_limit*6;
     }
     else {
-      time_limit=(tc_time_remaining*zero_inc_factor/(time_divisor));
+      time_limit=(tc_time_remaining*zero_inc_factor/time_divisor);
       absolute_time_limit=time_limit*6;
     }
   }
@@ -288,8 +303,12 @@ void TimeSet(int search_type)
  ----------------------------------------------------------
 */
   else {
-    time_limit=(tc_time_remaining - tc_operator_time)/
-         (tc_moves_remaining+3)*1.8;
+    if (ponder)
+      time_limit=(tc_time_remaining - tc_operator_time)/
+           (tc_moves_remaining+3)*1.8;
+    else
+      time_limit=(tc_time_remaining - tc_operator_time)/
+           (tc_moves_remaining+3);
   }
   absolute_time_limit=time_limit+(tc_time_remaining/4);
   if (absolute_time_limit > 6*time_limit) absolute_time_limit=6*time_limit;
@@ -300,17 +319,6 @@ void TimeSet(int search_type)
   
   if (usage_level != 0.0)  time_limit*=((float) 1.0+(usage_level/100.0));
   if (usage_time != 0.0)  time_limit*=((float) 1.0+(usage_time/100.0));
-/*
- ----------------------------------------------------------
-|                                                          |
-|   if just out of book, increase the search time for a    |
-|   couple of moves to avoid trouble.                      |
-|                                                          |
- ----------------------------------------------------------*/
-
- if  (last_move_in_book+1 > move_number && !tc_sudden_death)
-   time_limit*=((float) 1.4); 
-
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -327,7 +335,37 @@ void TimeSet(int search_type)
     time_limit/=30;
     absolute_time_limit=time_limit*3;
   }
+/*
+   this code is used to handle the case where someone
+   is trying to "blitz" crafty by reaching a position
+   where things are locked up, and then just shuffling
+   pieces back and forth.  when crafty reaches the point
+   where it has less than 3/4 of the time the opponent
+   has, it starts decreasing the target time.  at 1/2,
+   it decreases it further.
+*/
+  if (!computer_opponent && mode!=tournament_mode) {
+    int reduced=0;
+    for (i=0;i<6;i++) {
+      if ((float)tc_time_remaining*behind[i] <
+          (float)tc_time_remaining_opponent) {
+        reduced=1;
+        time_limit=time_limit/reduce[i];
+        Print(1,"crafty is behind %4.1f on time, reducing by 1/%d.\n",
+               behind[i],reduce[i]);
+        break;
+      }
+    }
+    if (tc_increment==0 &&
+        tc_time_remaining_opponent>tc_time_remaining) {
+      if (tc_time_remaining < 3000) time_limit/=2;
+      if (tc_time_remaining < 2000) time_limit/=2;
+      if (tc_time_remaining < 1000) time_limit=1;
+    }
+  }
 
+  if (!tc_sudden_death && !search_time_limit && time_limit>3*tc_time/tc_moves)
+    time_limit=3*tc_time/tc_moves;
   if (search_type != puzzle) {
     Print(1,"              time limit %s", DisplayTime(time_limit));
     if (adjust) Print(1," [%d/%5.1f",adjust,percent_adjust);
@@ -343,7 +381,7 @@ void TimeSet(int search_type)
   if (time_used+time_used_opponent < test_time_limit && last_value>0 &&
       time_used+time_used_opponent>=1 && search_type != puzzle &&
       tc_time_remaining<tc_time_remaining_opponent && !auto_kibitzing &&
-	  mode!=tournament_mode) {
+	  mode!=tournament_mode && !search_time_limit) {
     time_limit=Max(time_used+time_used_opponent,1+tc_increment/2);
     Print(1,"time_used   = %s\n",DisplayTime(time_used));
     Print(1,"time_used_opponent = %s\n",DisplayTime(time_used_opponent));
@@ -354,7 +392,7 @@ void TimeSet(int search_type)
   if (time_used+time_used_opponent < test_time_limit && last_value>0 &&
       time_used+time_used_opponent>=1 && search_type != puzzle &&
       tc_time_remaining<tc_time_remaining_opponent &&
-      auto_kibitzing && mode!=tournament_mode) {
+      auto_kibitzing && mode!=tournament_mode && !search_time_limit) {
     time_limit=Max(time_used+time_used_opponent,1+tc_increment/2);
     Print(1,"time_used   = %s\n",DisplayTime(time_used));
     Print(1,"time_used_opponent = %s\n",DisplayTime(time_used_opponent));
@@ -365,5 +403,5 @@ void TimeSet(int search_type)
     time_limit= 1;
     usage_level=0;
   }
+
 }
- 

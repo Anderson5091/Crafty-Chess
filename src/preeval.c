@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 #include "evaluate.h"
 
@@ -139,11 +138,11 @@ void PreEvaluate(int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  if ((last_wtm              != wtm) ||
-      (hashing_pawns         != hash_pawns) ||
-      (hashing_opening       != opening) ||
-      (hashing_middle_game   != middle_game) ||
-      (hashing_end_game      != end_game)) {
+  if (((last_wtm            != wtm) ||
+       (hashing_pawns       != hash_pawns) ||
+       (hashing_opening     != opening) ||
+       (hashing_middle_game != middle_game) ||
+       (hashing_end_game    != end_game)) && !test_mode) {
 /*
  ------------------------------------------------
 |                                                |
@@ -152,21 +151,8 @@ void PreEvaluate(int wtm)
 |                                                |
  ------------------------------------------------
 */
-    if (trans_ref_ba && trans_ref_wa) {
-      Print(4,"              clearing transposition table\n");
-      for (i=0;i<hash_table_size;i++) {
-        (trans_ref_ba+i)->word1=Or(And((trans_ref_ba+i)->word1,
-                        mask_clear_entry),Shiftl((BITBOARD) 131072,21));
-        (trans_ref_wa+i)->word1=Or(And((trans_ref_wa+i)->word1,
-                        mask_clear_entry),Shiftl((BITBOARD) 131072,21));
-      }
-      for (i=0;i<2*hash_table_size;i++) {
-        (trans_ref_bb+i)->word1=Or(And((trans_ref_bb+i)->word1,
-                        mask_clear_entry),Shiftl((BITBOARD) 131072,21));
-        (trans_ref_wb+i)->word1=Or(And((trans_ref_wb+i)->word1,
-                        mask_clear_entry),Shiftl((BITBOARD) 131072,21));
-      }
-    }
+    Print(4,"              clearing transposition table\n");
+    ClearHashTables();
 /*
  ------------------------------------------------
 |                                                |

@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 04/09/96 */
+/* last modified 02/17/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -83,15 +82,15 @@ int NextEvasion(int ply, int wtm)
           *movep=0;
         }
         else {
-          if (piece_values[Piece(*movep)] < piece_values[Captured(*movep)]) 
-            *sortv=piece_values[Captured(*movep)]-piece_values[Piece(*movep)];
+          if (p_values[Piece(*movep)+7] < p_values[Captured(*movep)+7]) 
+            *sortv=p_values[Captured(*movep)+7]-p_values[Piece(*movep)+7];
           else *sortv=Swap(From(*movep),To(*movep),wtm);
         }
     }
     else {
       for (movep=last[ply-1],sortv=sort_value;movep<last[ply];movep++,sortv++)
-        if (piece_values[Piece(*movep)] < piece_values[Captured(*movep)]) 
-          *sortv=piece_values[Captured(*movep)]-piece_values[Piece(*movep)];
+        if (p_values[Piece(*movep)+7] < p_values[Captured(*movep)+7]) 
+          *sortv=p_values[Captured(*movep)+7]-p_values[Piece(*movep)+7];
         else *sortv=Swap(From(*movep),To(*movep),wtm);
     }
 /*

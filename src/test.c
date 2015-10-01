@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
 /* last modified 02/27/96 */
@@ -35,14 +34,11 @@
 */
 void Test(void)
 {
-  int move, solutions[10];
-  int solution_type;
-  int i, number_of_solutions, right=0, wrong=0, correct;
-  char command[64], nextc;
+  int i, move, right=0, wrong=0, correct;
+  char command[128], nextc;
   int nodes=0;
   int time=0;
   int temp_draw_score_is_zero;
-  float avg_depth=0.0;
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -53,6 +49,8 @@ void Test(void)
 |                                                          |
  ----------------------------------------------------------
 */
+  float avg_depth=0.0;
+  test_mode=1;
   temp_draw_score_is_zero=draw_score_is_zero;
   draw_score_is_zero=1;
   if (book_file) {
@@ -60,26 +58,23 @@ void Test(void)
     book_file=0;
   }
   while (1) {
-    InitializeHashTables();
-    last_pv.path_iteration_depth=0;
-    largest_positional_score=1000;
     if (fscanf(input_stream,"%s",command) == EOF) break;
     if (!strcmp(command,"end")) break;
     else if (!strcmp(command,"title")) {
       fgets(command,80,input_stream);
       command[strlen(command)-1]='\0';
-      Print(0,"=======================================================\n");
-      Print(0,"!  %-50s !\n",command);
-      Print(0,"=======================================================\n");
+      if (strlen(command) > 65) command[65]=0;
+      Print(0,"======================================================================\n");
+      Print(0,"! %-65s  !\n",command);
+      Print(0,"======================================================================\n");
     }
-    else if (!strcmp(command,"setboard")) SetBoard();
+    else if (!strcmp(command,"setboard")) SetBoard(input_stream,0);
     else if (!strcmp(command,"solution")) {
       number_of_solutions=0;
       solution_type=0;
       Print(0,"solution ");
       do {
         fscanf(input_stream,"%s",command);
-        Print(0,"%d. %s ",number_of_solutions+1,command);
         if (command[strlen(command)-1] == '?') {
           solution_type=1;
           command[strlen(command)-1]='\0';
@@ -89,11 +84,19 @@ void Test(void)
           command[strlen(command)-1]='\0';
         }
         move=InputMove(command,0,wtm,0,0);
-        if (move)
-          solutions[number_of_solutions++]=move;
+        if (move) {
+          solutions[number_of_solutions]=move;
+          Print(0,"%d. %s",(number_of_solutions++)+1,OutputMove(&move,0,wtm));
+          if (solution_type==1) Print(0,"? ");
+          else printf(" ");
+        }
         nextc=getc(input_stream);
       } while (nextc == ' ');
       Print(0,"\n");
+      InitializeHashTables();
+      last_pv.path_iteration_depth=0;
+      largest_positional_score=1000;
+      largest_king_safety_score=1000;
       thinking=1;
       position[1]=position[0];
       (void) Iterate(wtm,think);
@@ -135,7 +138,9 @@ void Test(void)
   Print(0,"percentage wrong..................%10d\n",wrong*100/(right+wrong));
   Print(0,"total nodes searched..............%10d\n",nodes);
   Print(0,"average search depth..............%10.1f\n",avg_depth/(right+wrong));
-  Print(0,"nodes per second..................%10d\n",nodes/time*100);
+  Print(0,"nodes per second..................%10d\n",(int) ((float) nodes/(float) time*100.0));
   input_stream=stdin;
   draw_score_is_zero=temp_draw_score_is_zero;
+  early_exit=99;
+  test_mode=0;
 }

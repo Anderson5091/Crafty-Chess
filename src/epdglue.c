@@ -39,9 +39,8 @@ generic PC running Linux 1.2.9 and using the gcc 2.6.3 compiler.
 
 /* Crafty includes */
 
-#include "types.h"
+#include "chess.h"
 #include "data.h"
-#include "function.h"
 
 /* EPD Kit definitions (host program independent) */
 
@@ -726,7 +725,7 @@ if (position[posdex].enpassant_target != 0)
 	{
 	sq = sq_a1;
 	while ((epsq == sq_nil) && (sq <= sq_h8))
-		if (position[posdex].enpassant_target == set_mask[EGMapToHostSq(sq)])
+		if (position[posdex].enpassant_target == EGMapToHostSq(sq))
 			epsq = sq;
 		else
 			sq++;
@@ -779,7 +778,7 @@ castT cast;
 sqT epsq;
 siT hmvc;
 siT fmvn;
-siT i, index;
+siT index;
 
 /* this is an internal EPD glue routine */
 
@@ -831,7 +830,7 @@ if (cast & cf_bq)
 if (epsq == sq_nil)
 	position[0].enpassant_target = 0;
 else
-	position[0].enpassant_target = set_mask[EGMapToHostSq(epsq)];
+	position[0].enpassant_target = EGMapToHostSq(epsq);
 
 /* copy the halfmove clock */
 
@@ -845,9 +844,9 @@ move_number = fmvn;
 
 SetChessBitBoards(&position[0]);
 
-repetition_head_w=repetition_list_w;
-repetition_head_b=repetition_list_b;
-last_move_in_book = -100;
+rephead_w=replist_w;
+rephead_b=replist_b;
+moves_out_of_book = 0;
 last_mate_score = 0;
 
 /* clear the host history */
@@ -858,11 +857,10 @@ for (index = 0; index < (sqL * sqL); index++)
 /* clear the host killer information */
 
 for (index = 0; index < MAXPLY; index++)
-	for (i = 0; i < 2; i++)
-		{
-		killer_move[index][i] = 0;
-		killer_move_count[index][i] = 0;
-		};
+  killer_move1[index] = 0;
+  killer_move2[index] = 0;
+  killer_count1[index]=0;
+  killer_count2[index]=0;
 
 /* clear miscellaneous host items */
 
@@ -1319,7 +1317,7 @@ switch (EPDExtractRefcomIndex(epdptr0))
 
 		/* reset host for a new game */
 
-		do_ponder = 0;
+		ponder = 0;
 		ponder_completed = 0;
 		ponder_move = 0;
 
@@ -2767,7 +2765,7 @@ if (flag)
 
 				position[1] = position[0];
 				iteration_depth = 0;
-				do_ponder = 0;
+				ponder = 0;
 
 				/* get the starting time */
 
@@ -2829,7 +2827,7 @@ if (flag)
 				EPDDropIfLocEOPCode(epdptr, epdso_pv);
 				eopptr = EPDCreateEOPCode(epdso_pv);
 
-				for (index = 1; index <= pv[0].path_length; index++)
+				for (index = 1; index <= (int) pv[0].path_length; index++)
 					{
 					/* generate moves for the current position */
 
@@ -3769,14 +3767,14 @@ if (count == 0)
 	{
 	sprintf(tbufv,
 		"No tablebase files found in the %s directory.\n",
-		TBDIR);
+		tb_path);
 	EGPrintTB();
 	}
 else
 	{
 	sprintf(tbufv,
 		"%hd tablebase file(s) found in the %s directory.\n",
-		count, TBDIR);
+		count, tb_path);
 	EGPrintTB();
 	};
 

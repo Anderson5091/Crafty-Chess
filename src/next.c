@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 09/27/96 */
+/* last modified 03/11/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -55,9 +54,7 @@ int NextMove(int depth, int ply, int wtm)
 */
   case GENERATE_CAPTURE_MOVES:
     next_status[ply].phase=CAPTURE_MOVES;
-    last[ply]=GenerateMoves(ply, depth, wtm,
-                            (wtm) ? BlackPieces : WhitePieces,
-                            1, last[ply-1]);
+    last[ply]=GenerateCaptures(ply, wtm, last[ply-1]);
     next_status[ply].remaining=0;
     if (hash_move[ply]) {
       for (movep=last[ply-1],sortv=sort_value;movep<last[ply];movep++,sortv++)
@@ -67,8 +64,8 @@ int NextMove(int depth, int ply, int wtm)
           hash_move[ply]=0;
         }
         else {
-          if (piece_values[Piece(*movep)] < piece_values[Captured(*movep)]) {
-            *sortv=piece_values[Captured(*movep)]-piece_values[Piece(*movep)];
+          if (p_values[Piece(*movep)+7] < p_values[Captured(*movep)+7]) {
+            *sortv=p_values[Captured(*movep)+7]-p_values[Piece(*movep)+7];
             next_status[ply].remaining++;
           }
           else {
@@ -79,8 +76,8 @@ int NextMove(int depth, int ply, int wtm)
     }
     else {
       for (movep=last[ply-1],sortv=sort_value;movep<last[ply];movep++,sortv++)
-        if (piece_values[Piece(*movep)] < piece_values[Captured(*movep)]) {
-          *sortv=piece_values[Captured(*movep)]-piece_values[Piece(*movep)];
+        if (p_values[Piece(*movep)+7] < p_values[Captured(*movep)+7]) {
+          *sortv=p_values[Captured(*movep)+7]-p_values[Piece(*movep)+7];
           next_status[ply].remaining++;
         }
         else {
@@ -139,16 +136,16 @@ int NextMove(int depth, int ply, int wtm)
  ----------------------------------------------------------
 */
   case KILLER_MOVE_1:
-    if ((hash_move[ply] != killer_move[ply][0]) &&
-        ValidMove(ply,wtm,killer_move[ply][0])) {
-      current_move[ply]=killer_move[ply][0];
+    if ((hash_move[ply] != killer_move1[ply]) &&
+        ValidMove(ply,wtm,killer_move1[ply])) {
+      current_move[ply]=killer_move1[ply];
       next_status[ply].phase=KILLER_MOVE_2;
       return(KILLER_MOVE_1);
     }
   case KILLER_MOVE_2:
-    if ((hash_move[ply] != killer_move[ply][1]) &&
-        ValidMove(ply,wtm,killer_move[ply][1])) {
-      current_move[ply]=killer_move[ply][1];
+    if ((hash_move[ply] != killer_move2[ply]) &&
+        ValidMove(ply,wtm,killer_move2[ply])) {
+      current_move[ply]=killer_move2[ply];
       next_status[ply].phase=GENERATE_ALL_MOVES;
       return(KILLER_MOVE_2);
     }
@@ -161,8 +158,7 @@ int NextMove(int depth, int ply, int wtm)
  ----------------------------------------------------------
 */
   case GENERATE_ALL_MOVES:
-    last[ply]=GenerateMoves(ply, depth, wtm, Compl(Occupied),
-                            0, last[ply]);
+    last[ply]=GenerateNonCaptures(ply, wtm, last[ply]);
     next_status[ply].phase=HISTORY_MOVES_1;
 /*
  ----------------------------------------------------------
@@ -181,8 +177,8 @@ int NextMove(int depth, int ply, int wtm)
     bestval=0;
     bestp=0;
     for (movep=last[ply-1];movep<last[ply];movep++)
-      if (*movep && ((*movep == hash_move[ply]) || (*movep == killer_move[ply][0]) ||
-          (*movep == killer_move[ply][1]))) *movep=0;
+      if (*movep && ((*movep == hash_move[ply]) || (*movep == killer_move1[ply]) ||
+          (*movep == killer_move2[ply]))) *movep=0;
       else {
         index=*movep&4095;
         history_value= (wtm) ? history_w[index] : history_b[index];
@@ -264,6 +260,10 @@ int NextMove(int depth, int ply, int wtm)
       return(NONE);
     }
     done=0;
+    if (annotate_mode==0 && pondering==0 && last[1]-last[0] == 1) {
+      abort_search=1;
+      return(NONE);
+    }
     for (movep=last[0];movep<last[1];movep++)
       if (searched_this_root_move[movep-last[0]]) done++;
     if ((done==1) && searched_this_root_move[0] &&
@@ -271,11 +271,20 @@ int NextMove(int depth, int ply, int wtm)
 
     for (movep=last[0];movep<last[1];movep++)
       if (!searched_this_root_move[movep-last[0]]) {
-        if (search_move)
-          if(*movep != search_move) {
-            searched_this_root_move[movep-last[0]]=1;
-            continue;
+        if (search_move) {
+          if (search_move > 0) {
+            if(*movep != search_move) {
+              searched_this_root_move[movep-last[0]]=1;
+              continue;
+            }
           }
+          else {
+            if(*movep == -search_move) {
+              searched_this_root_move[movep-last[0]]=1;
+              continue;
+            }
+          }
+        }
         current_move[1]=*movep;
         searched_this_root_move[movep-last[0]]=1;
         if ((nodes_searched > noise_level) && (verbosity_level >= 9)) {

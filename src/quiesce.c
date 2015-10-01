@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 08/11/95 */
+/* last modified 04/14/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -18,8 +17,8 @@
 int Quiesce(int alpha, int beta, int wtm, int ply)
 {
   register int initial_alpha, value, delta;
-  register int i, *next_move;
-  register int *movep, moves=0, *sortv;
+  register int *next_move;
+  register int *goodmv, *movep, moves=0, *sortv, temp;
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -27,7 +26,9 @@ int Quiesce(int alpha, int beta, int wtm, int ply)
 |                                                          |
  ----------------------------------------------------------
 */
+  if (ply >= MAXPLY-2) return(beta);
   q_nodes_searched++;
+  next_time_check--;
   last[ply]=last[ply-1];
   initial_alpha=alpha;
 /*
@@ -45,7 +46,6 @@ int Quiesce(int alpha, int beta, int wtm, int ply)
   if (value > alpha) {
     if (value >= beta) return(beta);
     alpha=value;
-    for (i=1;i<ply;i++) pv[ply].path[i]=current_move[i];
     pv[ply].path_length=ply-1;
     pv[ply].path_hashed=0;
     pv[ply].path_iteration_depth=iteration_depth;
@@ -63,21 +63,27 @@ int Quiesce(int alpha, int beta, int wtm, int ply)
  ----------------------------------------------------------
 */
   last[ply]=GenerateCaptures(ply, wtm, last[ply-1]);
-  delta=alpha-Material-500;
-  for (movep=last[ply-1],sortv=sort_value;movep<last[ply];movep++,sortv++)
-    if (piece_values[Piece(*movep)] < piece_values[Captured(*movep)]) {
-      if (piece_values[Captured(*movep)] >= delta) {
-        *sortv=piece_values[Captured(*movep)];
+  delta=alpha-500-(wtm?Material:-Material);
+  goodmv=last[ply-1];
+  sortv=sort_value;
+  for (movep=last[ply-1];movep<last[ply];movep++)
+    if (p_values[Captured(*movep)+7]+p_values[Promote(*movep)+7] >= delta) {
+      if (Captured(*movep) == king) return(beta);
+      if (p_values[Piece(*movep)+7] < p_values[Captured(*movep)+7] ||
+          (p_values[Piece(*movep)+7] <= p_values[Captured(*movep)+7] &&
+           delta<=0)) {
+        *goodmv++=*movep;
+        *sortv++=p_values[Captured(*movep)+7];
         moves++;
       }
-      else *sortv=-999999;
-    }
-    else {
-      if (piece_values[Captured(*movep)] >= delta) {
-        *sortv=Swap(From(*movep),To(*movep),wtm);
-        if (*sortv >= 0) moves++;
+      else {
+        temp=Swap(From(*movep),To(*movep),wtm);
+        if (temp >= 0) {
+          *sortv++=temp;
+          *goodmv++=*movep;
+          moves++;
+        }
       }
-      else *sortv=-999999;
     }
 /*
  ----------------------------------------------------------
@@ -88,11 +94,12 @@ int Quiesce(int alpha, int beta, int wtm, int ply)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (moves) {
-    register int temp, done;
+  if (moves > 1) {
+    register int done;
     do {
       done=1;
-      for (movep=last[ply-1],sortv=sort_value;movep<last[ply]-1;movep++,sortv++)
+      sortv=sort_value;
+      for (movep=last[ply-1];movep<last[ply-1]+moves-1;movep++,sortv++)
         if (*sortv < *(sortv+1)) {
           temp=*sortv;
           *sortv=*(sortv+1);
@@ -115,7 +122,6 @@ int Quiesce(int alpha, int beta, int wtm, int ply)
 */
   while (moves--) {
     current_move[ply]=*(next_move++);
-    if (Captured(current_move[ply]) == king) return(beta);
 #if !defined(FAST)
     if (ply <= trace_level)
       SearchTrace(ply,0,wtm,alpha,beta,"quiesce",CAPTURE_MOVES);
@@ -138,6 +144,11 @@ int Quiesce(int alpha, int beta, int wtm, int ply)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (alpha != initial_alpha) pv[ply-1]=pv[ply];
+  if (alpha != initial_alpha) {
+    memcpy(&pv[ply-1].path[ply],&pv[ply].path[ply],
+           (pv[ply].path_length-ply+1)*sizeof(int));
+    memcpy(&pv[ply-1].path_hashed,&pv[ply].path_hashed,3);
+    pv[ply-1].path[ply-1]=current_move[ply-1];
+  }
   return(alpha);
 }

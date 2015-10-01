@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 05/30/96 */
+/* last modified 02/27/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -49,36 +48,42 @@ int ValidMove(int ply, int wtm, int move)
     case king:
       if (abs(From(move)-To(move)) == 2) {
         if (wtm) {
-          if (To(move) == 2) {
-            if ((!(WhiteCastle(ply)&2)) ||
-                And(Occupied,Shiftr(mask_3,1)) ||
-                And(AttacksTo(2),BlackPieces) ||
-                And(AttacksTo(3),BlackPieces) ||
-                And(AttacksTo(4),BlackPieces)) return(0);
+          if (WhiteCastle(ply) > 0) {
+            if (To(move) == 2) {
+              if ((!(WhiteCastle(ply)&2)) ||
+                  And(Occupied,Shiftr(mask_3,1)) ||
+                  And(AttacksTo(2),BlackPieces) ||
+                  And(AttacksTo(3),BlackPieces) ||
+                  And(AttacksTo(4),BlackPieces)) return(0);
+            }
+            else if (To(move) == 6) {
+              if ((!(WhiteCastle(ply)&1)) ||
+                  And(Occupied,Shiftr(mask_2,5)) ||
+                  And(AttacksTo(4),BlackPieces) ||
+                  And(AttacksTo(5),BlackPieces) ||
+                  And(AttacksTo(6),BlackPieces)) return(0);
+            }
           }
-          else if (To(move) == 6) {
-            if ((!(WhiteCastle(ply)&1)) ||
-                And(Occupied,Shiftr(mask_2,5)) ||
-                And(AttacksTo(4),BlackPieces) ||
-                And(AttacksTo(5),BlackPieces) ||
-                And(AttacksTo(6),BlackPieces)) return(0);
-          }
+          else return(0);
         }
         else {
-          if (To(move) == 58) {
-            if ((!(BlackCastle(ply)&2)) ||
-                And(Occupied,Shiftr(mask_3,57)) ||
-                And(AttacksTo(58),WhitePieces) ||
-                And(AttacksTo(59),WhitePieces) ||
-                And(AttacksTo(60),WhitePieces)) return(0);
+          if (BlackCastle(ply) > 0) {
+            if (To(move) == 58) {
+              if ((!(BlackCastle(ply)&2)) ||
+                  And(Occupied,Shiftr(mask_3,57)) ||
+                  And(AttacksTo(58),WhitePieces) ||
+                  And(AttacksTo(59),WhitePieces) ||
+                  And(AttacksTo(60),WhitePieces)) return(0);
+            }
+            if (To(move) == 62) {
+              if ((!(BlackCastle(ply)&1)) ||
+                  And(Occupied,Shiftr(mask_2,61)) ||
+                  And(AttacksTo(60),WhitePieces) ||
+                  And(AttacksTo(61),WhitePieces) ||
+                  And(AttacksTo(62),WhitePieces)) return(0);
+            }
           }
-          if (To(move) == 62) {
-            if ((!(BlackCastle(ply)&1)) ||
-                And(Occupied,Shiftr(mask_2,61)) ||
-                And(AttacksTo(60),WhitePieces) ||
-                And(AttacksTo(61),WhitePieces) ||
-                And(AttacksTo(62),WhitePieces)) return(0);
-          }
+          else return(0);
         }
         return(1);
       }

@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 09/13/95 */
+/* last modified 01/17/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -27,7 +26,7 @@ int Drawn(int value)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (WhitePawns || BlackPawns) return(0);
+  if (TotalWhitePawns || TotalBlackPawns) return(0);
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -56,11 +55,6 @@ int Drawn(int value)
 |                                                          |
  ----------------------------------------------------------
 */
-  if ((TotalWhitePieces != 5) || (TotalBlackPieces != 5)) {
-    if ((TotalWhitePieces == 5) || (TotalWhitePieces > 6) ||
-        ((TotalWhitePieces == 6) && (WhiteBishops))) return(0);
-    if ((TotalBlackPieces == 5) || (TotalBlackPieces > 6) ||
-        ((TotalBlackPieces == 6) && (BlackBishops))) return(0);
-  }
+  if (TotalWhitePieces>4 || TotalBlackPieces>4) return(0);
   return(1);
 }

@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 03/23/96 */
+/* last modified 02/17/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -33,7 +32,7 @@ int EnPrise(int target, int wtm)
   BITBOARD *pawns[2], *knights[2], *bishops[2], 
            *rooks[2], *queens[2], *kings[2];
   int attacked_piece;
-  int square;
+  int square, direction;
   int swap_sign, color, next_capture=0;
   int swap_list[32];
 /*
@@ -69,7 +68,7 @@ int EnPrise(int target, int wtm)
  ----------------------------------------------------------
 */
   swap_list[0]=0;
-  attacked_piece=piece_values[abs(PieceOnSquare(target))];
+  attacked_piece=p_values[PieceOnSquare(target)+7];
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -133,17 +132,14 @@ int EnPrise(int target, int wtm)
                               swap_sign*attacked_piece;
     else
       swap_list[next_capture]=attacked_piece;
-    attacked_piece=piece_values[abs(PieceOnSquare(square))];
+    attacked_piece=p_values[PieceOnSquare(square)+7];
     Clear(square,attacks);
-    if (directions[target][square]) attacks=SwapXray(attacks,square,target);
+    direction=directions[target][square];
+    if (direction) attacks=SwapXray(attacks,square,direction);
     next_capture++;
     swap_sign=-swap_sign;
     color=ChangeSide(color);
   }
-/*
-  for (i=0;i<next_capture;i++)
-    printf("swap_list[%d]=%d\n",i,swap_list[i]);
-*/
 /*
  ----------------------------------------------------------
 |                                                          |

@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 07/25/95 */
+/* last modified 04/21/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -15,21 +14,19 @@
 *   in the table below.                                                        *
 *                                                                              *
 *     bits     name  SL  description                                           *
-*       2       age  62  search id to identify old trans/ref entried.          *
-*       2      type  60  0->value is worthless; 1-> value represents a fail-   *
+*       3       age  61  search id to identify old trans/ref entried.          *
+*       2      type  59  0->value is worthless; 1-> value represents a fail-   *
 *                        low bound; 2-> value represents a fail-high bound;    *
 *                        3-> value is an exact score.                          *
-*      19     value  41  unsigned integer value of this position + 131072.     *
+*      19     value  21  unsigned integer value of this position + 262144.     *
 *                        this might be a good score or search bound.           *
-*      20    pvalue  21  unsigned integer value the evaluate() procedure       *
-*                        produced for this position (0=none)+131072.           *
 *      21      move   0  best move from the current position, according to the *
 *                        search at the time this position was stored.          *
 *                                                                              *
-*       8    unused  56  currently the final 8 bits are unused.                *
-*       8     draft  48  the depth of the search below this position, which is *
+*      16     draft  48  the depth of the search below this position, which is *
 *                        used to see if we can use this entry at the current   *
-*                        position.                                             *
+*                        position.  note that this is in units of 1/8th of a   *
+*                        ply.                                                  *
 *      48       key   0  leftmost 48 bits of the 64 bit hash key.  this is     *
 *                        used to "verify" that this entry goes with the        *
 *                        current board position.                               *
@@ -42,64 +39,67 @@
 */
 void StoreBest(int ply, int depth, int wtm, int value, int alpha)
 {
-  register BITBOARD temp_hash_key;
   register HASH_ENTRY *htablea, *htableb;
   register BITBOARD word1, word2;
   register int draft, age;
 /*
  ----------------------------------------------------------
 |                                                          |
-|   first, compute the initial hash address and choose     |
-|   which hash table (based on color) to probe.            |
-|                                                          |
- ----------------------------------------------------------
-*/
-  temp_hash_key=HashKey;
-  if (wtm) {
-    htablea=trans_ref_wa+(((int) temp_hash_key) & hash_maska);
-    htableb=trans_ref_wb+(((int) temp_hash_key) & hash_maskb);
-  }
-  else {
-    htablea=trans_ref_ba+(((int) temp_hash_key) & hash_maska);
-    htableb=trans_ref_bb+(((int) temp_hash_key) & hash_maskb);
-  }
-  temp_hash_key=temp_hash_key>>16;
-/*
- ----------------------------------------------------------
-|                                                          |
-|   now "fill in the blank" and build a table entry from   |
+|   "fill in the blank" and build a table entry from       |
 |   current search information.                            |
 |                                                          |
  ----------------------------------------------------------
 */
-  word1=0;
-
   if (value > alpha) {
-    if (abs(value) < MATE-100) word1=Or(word1,Shiftl((BITBOARD) (value+131072),41));
-    else if (value > 0) word1=Or(word1,Shiftl((BITBOARD) (value+ply-1+131072),41));
-    else word1=Or(word1,Shiftl((BITBOARD) (value-ply+1+131072),41));
-    word1=Or(word1,Shiftl((BITBOARD) ((transposition_id<<2)+EXACT_SCORE),60));
-    if (pv[ply].path_length >= ply) 
+    if (abs(value) < MATE-100) word1=Shiftl((BITBOARD) (value+262144),21);
+    else if (value > 0) word1=Shiftl((BITBOARD) (value+ply-1+262144),21);
+    else word1=Shiftl((BITBOARD) (value-ply+1+262144),21);
+    word1=Or(word1,Shiftl((BITBOARD) ((transposition_id<<2)+EXACT_SCORE),59));
+    if ((int) pv[ply].path_length >= ply) 
       word1=Or(word1,(BITBOARD) pv[ply].path[ply]);
   }
   else {
-    word1=Or(word1,Shiftl((BITBOARD) (value+131072),41));
-    word1=Or(word1,Shiftl((BITBOARD) ((transposition_id<<2)+LOWER_BOUND),60));
+    word1=Shiftl((BITBOARD) (value+262144),21);
+    word1=Or(word1,Shiftl((BITBOARD) ((transposition_id<<2)+LOWER_BOUND),59));
   }
 
-  word2=Or(temp_hash_key,Shiftl((BITBOARD) depth,48));
-
-  draft=((int) Shiftr(htablea->word2,48)) & 0377;
-  age=((unsigned int) Shiftr(htablea->word1,62))!=transposition_id;
+  word2=Or(HashKey>>16,Shiftl((BITBOARD) depth,48));
+/*
+ ----------------------------------------------------------
+|                                                          |
+|   if the draft of this entry is greater than the draft   |
+|   of the entry in the "depth-priority" table, or if the  |
+|   entry in the depth-priority table is from an old       |
+|   search, move that entry to the always-store table and  |
+|   then replace the depth-priority table entry by the new |
+|   hash result.                                           |
+|                                                          |
+ ----------------------------------------------------------
+*/
+  if (wtm) {
+    htablea=trans_ref_wa+(((int) HashKey) & hash_maska);
+    htableb=trans_ref_wb+(((int) HashKey) & hash_maskb);
+  }
+  else {
+    htablea=trans_ref_ba+(((int) HashKey) & hash_maska);
+    htableb=trans_ref_bb+(((int) HashKey) & hash_maskb);
+  }
+  draft=(int) Shiftr(htablea->word2,48);
+  age=(unsigned int) Shiftr(htablea->word1,61);
+  age=age && (age!=transposition_id);
   if (age || (depth >= draft)) {
+    htableb->word1=htablea->word1;
+    htableb->word2=htablea->word2;
     htablea->word1=word1;
     htablea->word2=word2;
   }
-  htableb->word1=word1;
-  htableb->word2=word2;
+  else {
+    htableb->word1=word1;
+    htableb->word2=word2;
+  }
 }
 
-/* last modified 07/25/95 */
+/* last modified 04/21/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -144,13 +144,13 @@ void StorePV(int ply, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  htable->word1=Shiftl((BITBOARD) 131072,21);
-  htable->word1=Or(htable->word1,Shiftl((BITBOARD) ((transposition_id<<2)+WORTHLESS),61));
+  htable->word1=Shiftl((BITBOARD) 262144,21);
+  htable->word1=Or(htable->word1,Shiftl((BITBOARD) ((transposition_id<<2)+WORTHLESS),59));
   htable->word1=Or(htable->word1,(BITBOARD) pv[ply].path[ply]);
   htable->word2=temp_hash_key;
 }
 
-/* last modified 07/25/95 */
+/* last modified 04/21/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -162,49 +162,54 @@ void StorePV(int ply, int wtm)
 */
 void StoreRefutation(int ply, int depth, int wtm, int bound)
 {
-  register BITBOARD temp_hash_key;
   register HASH_ENTRY *htablea, *htableb;
   register BITBOARD word1, word2;
   register int draft, age;
 /*
  ----------------------------------------------------------
 |                                                          |
-|   first, compute the initial hash address and choose     |
-|   which hash table (based on color) to probe.            |
-|                                                          |
- ----------------------------------------------------------
-*/
-  temp_hash_key=HashKey;
-  if (wtm) {
-    htablea=trans_ref_wa+(((int) temp_hash_key) & hash_maska);
-    htableb=trans_ref_wb+(((int) temp_hash_key) & hash_maskb);
-  }
-  else {
-    htablea=trans_ref_ba+(((int) temp_hash_key) & hash_maska);
-    htableb=trans_ref_bb+(((int) temp_hash_key) & hash_maskb);
-  }
-  temp_hash_key=temp_hash_key>>16;
-/*
- ----------------------------------------------------------
-|                                                          |
-|   now "fill in the blank" and build a table entry from   |
+|   "fill in the blank" and build a table entry from       |
 |   current search information.                            |
 |                                                          |
  ----------------------------------------------------------
 */
-  word1=Shiftl((BITBOARD) (bound+131072),41);
-  word1=Or(word1,Shiftl((BITBOARD) ((transposition_id<<2)+UPPER_BOUND),60));
+  word1=Shiftl((BITBOARD) (bound+262144),21);
+  word1=Or(word1,Shiftl((BITBOARD) ((transposition_id<<2)+UPPER_BOUND),59));
   word1=Or(word1,(BITBOARD) current_move[ply]);
 
-  word2=Or(temp_hash_key,Shiftl((BITBOARD) depth,48));
-
-  draft=((int) Shiftr(htablea->word2,48)) & 0377;
-  age=((unsigned int) Shiftr(htablea->word1,62))!=transposition_id;
+  word2=Or(HashKey>>16,Shiftl((BITBOARD) depth,48));
+/*
+ ----------------------------------------------------------
+|                                                          |
+|   if the draft of this entry is greater than the draft   |
+|   of the entry in the "depth-priority" table, or if the  |
+|   entry in the depth-priority table is from an old       |
+|   search, move that entry to the always-store table and  |
+|   then replace the depth-priority table entry by the new |
+|   hash result.                                           |
+|                                                          |
+ ----------------------------------------------------------
+*/
+  if (wtm) {
+    htablea=trans_ref_wa+(((int) HashKey) & hash_maska);
+    htableb=trans_ref_wb+(((int) HashKey) & hash_maskb);
+  }
+  else {
+    htablea=trans_ref_ba+(((int) HashKey) & hash_maska);
+    htableb=trans_ref_bb+(((int) HashKey) & hash_maskb);
+  }
+  draft=(int) Shiftr(htablea->word2,48);
+  age=(unsigned int) Shiftr(htablea->word1,61);
+  age=age && (age!=transposition_id);
 
   if (age || (depth >= draft)) {
+    htableb->word1=htablea->word1;
+    htableb->word2=htablea->word2;
     htablea->word1=word1;
     htablea->word2=word2;
   }
-  htableb->word1=word1;
-  htableb->word2=word2;
+  else {
+    htableb->word1=word1;
+    htableb->word2=word2;
+  }
 }

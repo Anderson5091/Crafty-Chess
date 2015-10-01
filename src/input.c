@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 09/20/96 */
+/* last modified 03/11/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -22,8 +21,7 @@
 */
 int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
 {
-  int moves[200], *mv, *mvp, *goodmove=0;
-  BITBOARD target;
+  int moves[220], *mv, *mvp, *goodmove=0;
   int piece=-1, capture, promote, give_check;
   int ffile, frank, tfile, trank;
   int current, i, nleft, ambig;
@@ -55,7 +53,7 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
   tfile=-1;
   ambig=0;
   goodchar=strchr(movetext,'#');
-  if (goodchar) *goodchar='\0';
+  if (goodchar) *goodchar=0;
 /*
    first, figure out what each character means.  the first thing to
    do is eliminate castling moves
@@ -79,7 +77,7 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
   }
   else 
     if (!strcmp(movetext,"o-o-o") || !strcmp(movetext,"o-o-o+") ||
-		!strcmp(movetext,"O-O-O") || !strcmp(movetext,"O-O-O+") ||
+        !strcmp(movetext,"O-O-O") || !strcmp(movetext,"O-O-O+") ||
         !strcmp(movetext,"0-0-0") || !strcmp(movetext,"0-0-0+")) {
       piece=king;
       if(wtm) {
@@ -106,7 +104,7 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
    now, start by picking off the check indicator (+) if one is present.
 */
     if (strchr(movetext,'+')) {
-      *strchr(movetext,'+')='\0';
+      *strchr(movetext,'+')=0;
       give_check=1;
     }
 /*
@@ -117,7 +115,7 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
       goodchar=strchr(movetext,'=');
       goodchar++;
       promote=(strchr(pieces,*goodchar)-pieces) >> 1;
-      *strchr(movetext,'=')='\0';
+      *strchr(movetext,'=')=0;
     }
 /*
    the next thing to do is extract the last rank/file designators since
@@ -126,13 +124,13 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
     current=strlen(movetext)-1;
     trank=movetext[current]-'1';
     if ((trank >= 0) && (trank <= 7)) 
-      movetext[current]='\0';
+      movetext[current]=0;
     else 
       trank=-1;
     current=strlen(movetext)-1;
     tfile=movetext[current]-'a';
     if ((tfile >= 0) || (tfile <= 7)) 
-      movetext[current]='\0';
+      movetext[current]=0;
     else
       tfile=-1;
     if (strlen(movetext)) {
@@ -161,7 +159,7 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
 */
       if ((strlen(movetext)) && (movetext[strlen(movetext)-1] == 'x')) {
         capture=1;
-        movetext[strlen(movetext)-1]='\0';
+        movetext[strlen(movetext)-1]=0;
       }
       else
         capture=0;
@@ -188,8 +186,8 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
   }
   if (!piece) piece=1;
   if (!ponder_list) {
-    target=(wtm) ? Compl(WhitePieces) : Compl(BlackPieces);
-    mvp=GenerateMoves(MAXPLY, 1, wtm, target, 1, moves);
+    mvp=GenerateCaptures(MAXPLY, wtm, moves);
+    mvp=GenerateNonCaptures(MAXPLY, wtm, mvp);
   }
   else {
     for (i=0;i<num_ponder_moves;i++)
@@ -245,14 +243,14 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
     }
   }
   if (!silent) {
-    if (!nleft) Print(0,"illegal move 9.\n");
+    if (!nleft) Print(0,"illegal move.\n");
     else if (piece < 0) Print(0,"unrecognizable move.\n");
     else Print(0,"move is ambiguous.\n");
   }
   return(0);
 }
 
-/* last modified 09/20/96 */
+/* last modified 03/11/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -263,8 +261,7 @@ int InputMove(char *text, int ply, int wtm, int silent, int ponder_list)
 */
 int InputMoveICS(char *text, int ply, int wtm, int silent, int ponder_list)
 {
-  int moves[200], *mv, *mvp, *goodmove=0;
-  BITBOARD target;
+  int moves[220], *mv, *mvp, *goodmove=0;
   int piece=-1, promote;
   int ffile, frank, tfile, trank;
   int i, nleft;
@@ -326,21 +323,21 @@ int InputMoveICS(char *text, int ply, int wtm, int silent, int ponder_list)
    now, continue by picking off the promotion piece if one is present.  this 
    is indicated by something like q on the end of the move string.
 */
-    if ((movetext[4] != '\0') && (movetext[4] != ' ')) {
+    if ((movetext[4] != 0) && (movetext[4] != ' ')) {
       promote=(strchr(pieces,movetext[4])-pieces) >> 1;
     }
   }
   if (!ponder_list) {
-    target=(wtm) ? Compl(WhitePieces) : Compl(BlackPieces);
-    mvp=GenerateMoves(MAXPLY, 1, wtm, target, 1, moves);
+    mvp=GenerateCaptures(MAXPLY, wtm, moves);
+    mvp=GenerateNonCaptures(MAXPLY, wtm, mvp);
   }
   else {
     for (i=0;i<num_ponder_moves;i++) moves[i]=ponder_moves[i];
     mvp=moves+num_ponder_moves;
   }
   for (mv=&moves[0];mv<mvp;mv++) {
-    if (autoplay && Promote(*mv) && (Promote(*mv) != queen)) *mv = 0;
-    if (!autoplay && Promote(*mv) != promote) *mv=0;
+    if (auto232 && Promote(*mv) && (Promote(*mv) != queen)) *mv = 0;
+    if (!auto232 && Promote(*mv) != promote) *mv=0;
     if (Rank(From(*mv)) != frank) *mv=0;
     if (File(From(*mv)) != ffile) *mv=0;
     if (Rank(To(*mv)) != trank) *mv=0;
@@ -363,7 +360,7 @@ int InputMoveICS(char *text, int ply, int wtm, int silent, int ponder_list)
   }
   if (nleft == 1) return(*goodmove);
   if (!silent) {
-    if (!nleft) Print(0,"illegal move 10. \"%s\"\n", text);
+    if (!nleft) Print(0,"illegal move.\n");
     else if (piece < 0) Print(0,"unrecognizable move.\n");
     else Print(0,"move is ambiguous.\n");
   }

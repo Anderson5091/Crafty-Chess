@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
 /* last modified 03/14/96 */
@@ -38,15 +37,17 @@ void Phase(void)
   t_end_game=end_game;
   if (opening) {
     do {
-      if (root_wtm) {
-        if (WhiteCastle(1)>0) break;
-        if (And(WhiteBishops,white_minor_pieces)) break;
-        if (And(WhiteKnights,white_minor_pieces)) break;
-      }
-      else {
-        if (BlackCastle(1)>0) break;
-        if (And(BlackBishops,black_minor_pieces)) break;
-        if (And(BlackKnights,black_minor_pieces)) break;
+      if (move_number < 20) {
+        if (root_wtm) {
+          if (WhiteCastle(1)>0) break;
+          if (And(WhiteBishops,white_minor_pieces)) break;
+          if (And(WhiteKnights,white_minor_pieces)) break;
+        }
+        else {
+          if (BlackCastle(1)>0) break;
+          if (And(BlackBishops,black_minor_pieces)) break;
+          if (And(BlackKnights,black_minor_pieces)) break;
+        }
       }
       opening=0;
       middle_game=1;
@@ -61,7 +62,7 @@ void Phase(void)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (TotalWhitePieces < 17 && TotalBlackPieces < 17) {
+  if (TotalWhitePieces < 14 && TotalBlackPieces < 14) {
     opening=0;
     middle_game=0;
     end_game=1;

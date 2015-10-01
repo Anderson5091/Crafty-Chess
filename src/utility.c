@@ -13,8 +13,7 @@
 #  include <sys/times.h>
 #  include <sys/time.h>
 #endif
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 #if defined(UNIX)
 #  include <unistd.h>
@@ -62,8 +61,6 @@ typedef int BOOLEAN;
 /* Returns FALSE right away if input stream is not a terminal
 ** TRUE if user pressed a key
 ** FALSE if user didn't press a key
-**
-** Note: Lightly tested
 */
 
 BOOLEAN _kbhit(void)
@@ -142,6 +139,35 @@ int CheckInput(void)
 # endif
 #endif
   return(i);
+}
+
+void Delay(int ms)
+{
+  int old,new;
+  old=GetTime(elapsed);
+  do {
+    new=GetTime(elapsed);
+  } while (new-ms/10 < old);
+}
+
+void ClearHashTables(void)
+{
+  int i;
+
+  if (trans_ref_ba && trans_ref_wa) {
+    for (i=0;i<hash_table_size;i++) {
+      (trans_ref_ba+i)->word1=Or(And((trans_ref_ba+i)->word1,
+                      mask_clear_entry),Shiftl((BITBOARD) 262144,21));
+      (trans_ref_wa+i)->word1=Or(And((trans_ref_wa+i)->word1,
+                      mask_clear_entry),Shiftl((BITBOARD) 262144,21));
+    }
+    for (i=0;i<2*hash_table_size;i++) {
+      (trans_ref_bb+i)->word1=Or(And((trans_ref_bb+i)->word1,
+                      mask_clear_entry),Shiftl((BITBOARD) 262144,21));
+      (trans_ref_wb+i)->word1=Or(And((trans_ref_wb+i)->word1,
+                      mask_clear_entry),Shiftl((BITBOARD) 262144,21));
+    }
+  }
 }
 
 void DisplayBitBoard(BITBOARD board)
@@ -312,15 +338,10 @@ void Display64bitWord(BITBOARD word)
   };
   union doub x;
   x.d=word;
-#if defined(HAS_LONGLONG)
 #if defined(LITTLE_ENDIAN_ARCH)
-  printf("%x%x\n",x.i[1],x.i[0]);
+  printf("%08x%08x\n",x.i[1],x.i[0]);
 #else
-  printf("%llx\n",word);
-#endif
-#endif
-#if !defined(HAS_LONGLONG) && !defined(LITTLE_ENDIAN_ARCH)
-  printf("%x%x\n",x.i[0],x.i[1]);
+  printf("%08x%08x\n",x.i[0],x.i[1]);
 #endif
 }
 
@@ -466,28 +487,28 @@ BITBOARD InterposeSquares(int check_direction, int king_square,
 */
   switch (check_direction) {
     case +1:
-      target=Xor(mask_plus1dir[king_square-1],mask_plus1dir[checking_square]);
+      target=Xor(plus1dir[king_square-1],plus1dir[checking_square]);
       break;
     case +7:
-      target=Xor(mask_plus7dir[king_square-7],mask_plus7dir[checking_square]);
+      target=Xor(plus7dir[king_square-7],plus7dir[checking_square]);
       break;
     case +8:
-      target=Xor(mask_plus8dir[king_square-8],mask_plus8dir[checking_square]);
+      target=Xor(plus8dir[king_square-8],plus8dir[checking_square]);
       break;
     case +9:
-      target=Xor(mask_plus9dir[king_square-9],mask_plus9dir[checking_square]);
+      target=Xor(plus9dir[king_square-9],plus9dir[checking_square]);
       break;
     case -1:
-      target=Xor(mask_minus1dir[king_square+1],mask_minus1dir[checking_square]);
+      target=Xor(minus1dir[king_square+1],minus1dir[checking_square]);
       break;
     case -7:
-      target=Xor(mask_minus7dir[king_square+7],mask_minus7dir[checking_square]);
+      target=Xor(minus7dir[king_square+7],minus7dir[checking_square]);
       break;
     case -8:
-      target=Xor(mask_minus8dir[king_square+8],mask_minus8dir[checking_square]);
+      target=Xor(minus8dir[king_square+8],minus8dir[checking_square]);
       break;
     case -9:
-      target=Xor(mask_minus9dir[king_square+9],mask_minus9dir[checking_square]);
+      target=Xor(minus9dir[king_square+9],minus9dir[checking_square]);
       break;
     default:
       target=0;
@@ -652,20 +673,15 @@ int PinnedOnKing(int wtm, int square)
   return(0);
 }
 
-void Print(int vb, char *fmt, ...) {
+void Print(int vb, char *fmt, ...)
+{
   va_list ap;
-
-  va_start(ap, fmt);
-  vprintf(fmt, ap);
-  fflush(stdout);
-  if (time_limit > -99) {
-    va_start(ap, fmt);
-    if (log_file)
-      vfprintf(log_file, fmt, ap);
-    if (log_file)
-      fflush(log_file);
-  }
+  va_start(ap,fmt);
+  if (vb <= verbosity_level) vprintf(fmt, ap);
+  if (log_file) vfprintf(log_file, fmt, ap);
   va_end(ap);
+  fflush(stdout);
+  if (log_file) fflush(log_file);
 }
 
 /*
@@ -738,19 +754,26 @@ BITBOARD Random64(void)
 *                                                                              *
 ********************************************************************************
 */
-int ReadChessMove(FILE *input, int wtm) {
+int ReadChessMove(FILE *input, int wtm, int one_move) {
 
   static char text[128];
+  char *tmove;
   int move=0, status;
 
   while (move == 0) {
     status=fscanf(input,"%s",text);
     if (status <= 0) return(-1);
-    if (((text[0]>='a') && (text[0]<='z')) ||
-          ((text[0]>='A') && (text[0]<='Z'))) {
-      if (!strcmp(text,"exit")) return(-1);
-      move=InputMove(text+strspn(text,"0123456789."),0,wtm,1,0);
+    if (strcmp(text,"0-0") && strcmp(text,"0-0-0"))
+      tmove=text+strspn(text,"0123456789.");
+    else
+      tmove=text;
+    if (((tmove[0]>='a' && tmove[0]<='z') ||
+         (tmove[0]>='A' && tmove[0]<='Z')) ||
+        !strcmp(tmove,"0-0") || !strcmp(tmove,"0-0-0")) {
+      if (!strcmp(tmove,"exit")) return(-1);
+      move=InputMove(tmove,0,wtm,1,0);
     }
+    if (one_move) break;
   }
   return(move);
 }
@@ -765,25 +788,6 @@ char* Reverse(void)
 #endif
   else
     return("");
-}
-
-
-int TtoI(char *text)
-{
-  int t;
-  char *n;
-
-  t=0;
-  if (!strchr(text,':')) t=atoi(text);
-  else {
-    n=text-1;
-    do {
-      n++;
-      t=t*60+atoi(n);
-      n=strchr(n,':');
-    } while (n);
-  }
-  return(t);
 }
 
 #if defined(COMPACT_ATTACKS)
@@ -1168,6 +1172,12 @@ void Whisper(int level,int depth,int time,int value,unsigned int nodes,
              int cpu,char* pv)
 {
   if (!puzzling) {
+    char prefix[128];
+
+    if (strlen(channel_title) && channel)
+      sprintf(prefix,"tell %d (%s) ",channel, channel_title);
+    else if (channel) sprintf(prefix,"tell %d",channel);
+    else sprintf(prefix,"whisper");
     switch (level) {
     case 1:
       if (kibitz && (value > 0)) {
@@ -1176,11 +1186,11 @@ void Whisper(int level,int depth,int time,int value,unsigned int nodes,
       }
       else if (whisper && (value > 0)) {
         if (ics) printf("*");
-        printf("whisper mate in %d moves.\n\n",value);
+        printf("%s mate in %d moves.\n\n",prefix,value);
       }
       if (kibitz && (value < 0)) {
         if (ics) printf("*");
-        printf("whisper mated in %d moves.\n\n",-value);
+        printf("%s mated in %d moves.\n\n",prefix,-value);
       }
       break;
     case 2:
@@ -1192,18 +1202,18 @@ void Whisper(int level,int depth,int time,int value,unsigned int nodes,
       }
       else if (whisper >= 2) {
         if (ics) printf("*");
-        printf("whisper depth %d; score %s; nodes %u; nps %d; cpu %d%%\n",
-               depth,DisplayEvaluationWhisper(value),
+        printf("%s depth %d; score %s; nodes %u; nps %d; cpu %d%%\n",
+               prefix,depth,DisplayEvaluationWhisper(value),
                nodes,(time) ? 100*nodes/time : nodes,cpu);
       }
     case 3:
-      if ((kibitz >= 3) && nodes) {
+      if ((kibitz >= 3) && nodes>5000) {
         if (ics) printf("*");
         printf("kibitz pv:%s\n",pv);
       }
-      else if ((whisper >= 3) && nodes) {
+      else if ((whisper >= 3) && nodes>5000) {
         if (ics) printf("*");
-        printf("whisper pv:%s\n",pv);
+        printf("%s pv:%s\n",prefix,pv);
       }
       break;
     case 4:
@@ -1213,23 +1223,23 @@ void Whisper(int level,int depth,int time,int value,unsigned int nodes,
       }
       else if (whisper >= 4) {
         if (ics) printf("*");
-        printf("whisper %s\n",pv);
+        printf("%s %s\n",prefix,pv);
       }
       break;
     case 5:
-      if (kibitz >= 5) {
+      if (kibitz>=5 && nodes>5000) {
         if (ics) printf("*");
         printf("kibitz d%d-> %s %s %s\n",depth, DisplayTimeWhisper(time),
                                        DisplayEvaluationWhisper(value),pv);
       }
-      else if (whisper >= 5) {
+      else if (whisper>=5 && nodes>5000) {
         if (ics) printf("*");
-        printf("whisper d%d-> %s %s %s\n",depth, DisplayTimeWhisper(time),
+        printf("%s d%d-> %s %s %s\n",prefix,depth, DisplayTimeWhisper(time),
                                        DisplayEvaluationWhisper(value),pv);
       }
       break;
     case 6:
-      if (kibitz >= 6) {
+      if (kibitz>=6 && nodes>5000) {
         if (ics) printf("*");
         if (cpu == 0)
           printf("kibitz d%d+ %s %s %s\n",depth, DisplayTimeWhisper(time),
@@ -1238,13 +1248,13 @@ void Whisper(int level,int depth,int time,int value,unsigned int nodes,
           printf("kibitz d%d+ %s >(%s) %s <re-searching>\n",depth,
                  DisplayTimeWhisper(time),DisplayEvaluationWhisper(value),pv);
       }
-      else if (whisper >= 6) {
+      else if (whisper>=6 && nodes>5000) {
         if (ics) printf("*");
         if (cpu == 0)
-          printf("whisper d%d+ %s %s %s\n",depth, DisplayTimeWhisper(time),
+          printf("%s d%d+ %s %s %s\n",prefix,depth, DisplayTimeWhisper(time),
                                             DisplayEvaluationWhisper(value),pv);
         else
-          printf("whisper d%d+ %s >(%s) %s <re-searching>\n",depth,
+          printf("%s d%d+ %s >(%s) %s <re-searching>\n",prefix,depth,
                  DisplayTimeWhisper(time),DisplayEvaluationWhisper(value),pv);
       }
       break;

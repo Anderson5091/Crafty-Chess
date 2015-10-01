@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 08/12/95 */
+/* last modified 04/16/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -31,23 +30,12 @@ int RepetitionCheck(int ply, int wtm)
 /*
  ----------------------------------------------------------
 |                                                          |
-|   if the 50-move rule is drawing close, then adjust the  |
-|   score to reflect the impending draw.                   |
-|                                                          |
- ----------------------------------------------------------
-*/
-  if (ply == 1) return(0);
-  if (Rule50Moves(ply) > 99) return(2);
-/*
- ----------------------------------------------------------
-|                                                          |
 |   check for trivial draws, like insufficient material.   |
 |                                                          |
  ----------------------------------------------------------
 */
   if (!(TotalWhitePawns+TotalBlackPawns) &&
-      (TotalWhitePieces < 5) && (TotalBlackPieces < 5))
-    return(1);
+      TotalWhitePieces<5 && TotalBlackPieces<5) return(1);
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -60,23 +48,15 @@ int RepetitionCheck(int ply, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  entries=(Rule50Moves(ply)>>1)+1;
-  if (wtm) {
-    thispos=repetition_head_w+((ply-2)>>1);
-    *thispos=HashKey;
-    for (replist=thispos-1;entries;replist--,entries--)
-      if(*thispos == *replist) return(1);
-  }
-  else {
-    thispos=repetition_head_b+((ply-2)>>1);
-    *thispos=HashKey;
-    for (replist=thispos-1;entries;replist--,entries--)
-      if(*thispos == *replist) return(1);
-  }
+  entries=Rule50Moves(ply)>>1;
+  thispos=((wtm)?rephead_w:rephead_b)+((ply-1)>>1);
+  *thispos=HashKey;
+  for (replist=thispos-1;entries;replist--,entries--)
+    if(*thispos == *replist) return(1);
   return(0);
 }
 
-/* last modified 08/12/95 */
+/* last modified 06/14/96 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -110,11 +90,11 @@ int RepetitionDraw(int wtm)
 */
   reps=0;
   if (wtm) {
-    for (thispos=repetition_list_w;thispos<repetition_head_w;thispos++)
+    for (thispos=replist_w;thispos<rephead_w;thispos++)
       if(HashKey == *thispos) reps++;
   }
   else {
-    for (thispos=repetition_list_b;thispos<repetition_head_b;thispos++)
+    for (thispos=replist_b;thispos<rephead_b;thispos++)
       if(HashKey == *thispos) reps++;
   }
   return(reps == 3);

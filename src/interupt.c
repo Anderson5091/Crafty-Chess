@@ -2,11 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 08/15/96 */
+/* last modified 04/16/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -22,7 +21,7 @@
 void Interrupt(int ply)
 {
   int temp, *mvp;
-  int i, left, result, time_used;
+  int i, j, left, nextc, result, time_used;
   static char save_command[64];
   int deferred=0;
 
@@ -49,9 +48,13 @@ void Interrupt(int ply)
 */
   else if (!xboard && !ics) {
     do {
+      nextc=getc(stdin);
+      if (nextc == '\n') return;
+      ungetc(nextc,stdin);
       scanf("%s",input);
-      Print(1,"ok.\n");
+      if (log_file) fprintf(log_file,"%s\n",input);
       if (!strcmp(input,".")) {
+        Print(1,"ok.\n");
         end_time=GetTime(time_type);
         time_used=(end_time-start_time);
         printf("time:%s ",DisplayTime(time_used));
@@ -69,6 +72,7 @@ void Interrupt(int ply)
         printf("\n");
       }
       else if (!strcmp(input,"?")) {
+        Print(1,"ok.\n");
         if (thinking) {
           time_abort=1;
           abort_search=1;
@@ -77,6 +81,7 @@ void Interrupt(int ply)
       else {
         result=Option(input);
         if (result == 2) {
+          Print(1,"ok.\n");
           if (thinking)
             Print(0,"command not legal now.\n");
           else {
@@ -85,6 +90,7 @@ void Interrupt(int ply)
           }
         }
         else if ((result != 1) && analyze_mode) {
+          Print(1,"ok.\n");
           abort_search=1;
           analyze_move_read=1;
         }
@@ -103,6 +109,16 @@ void Interrupt(int ply)
           if (pondering) {
             temp=InputMove(input,0,ChangeSide(root_wtm),1,1);
             if (temp) {
+              if (auto232) {
+                char *mv=OutputMoveICS(&temp);
+                Delay(100);
+                if (!wtm) fprintf(auto_file,"\t");
+                fprintf(auto_file, " %c%c-%c%c", mv[0], mv[1], mv[2], mv[3]);
+                if ((mv[4] != ' ') && (mv[4] != 0))
+                fprintf(auto_file, "/%c", mv[4]);
+                fprintf(auto_file, "\n");
+                fflush(auto_file);
+              }
               if ((From(temp) == From(ponder_move)) &&
                   (To(temp) == To(ponder_move)) &&
                   (Piece(temp) == Piece(ponder_move)) &&
@@ -113,6 +129,7 @@ void Interrupt(int ply)
                 thinking=1;
                 opponent_end_time=GetTime(elapsed);
                 program_start_time=GetTime(time_type);
+                Print(1,"predicted move made.\n");
               }
               else
                 abort_search=1;
@@ -120,13 +137,14 @@ void Interrupt(int ply)
             else if (!strcmp(input,"go") || !strcmp(input,"move")) {
               abort_search=1;
             }
-            else Print(0,"illegal move 6.\n");
+            else Print(0,"illegal move.\n");
           }
           else
            Print(0,"unknown command/command not legal now.\n");
         }
       }
     } while (CheckInput());
+    fflush(log_file);
   }
 /*
  ----------------------------------------------------------
@@ -148,7 +166,52 @@ void Interrupt(int ply)
         continue;
       }
       if (log_file) fprintf(log_file,"%s\n",input);
-      if (input[4] == ' ') input[4]='=';
+
+      /* This is like the "." command above, but in a
+	 raw form (easier to parse). We tag the start of
+	 the line with "stat01:" so XBoard can recognize it.
+	 In the future, additional lines (stat02, stat03, etc.)
+	 can be added (if needed) without breaking backwards
+	 compatibility.
+	 The output is:
+	 stat01: time nodes depth root_moves_left root_moves_total
+	 */
+	  
+      if (!strcmp(input,".")) {
+        end_time=GetTime(time_type);
+        time_used=(end_time-start_time);
+
+	/* Tag the line */
+        printf("stat01: %d ",time_used);
+
+	/* Note that I added ".. + q_nodes_searched" below... */
+        printf("%d ",nodes_searched+q_nodes_searched);
+
+	/* This keeps us in sync on the XBoard side.
+	   Otherwise, the depth indicator will sometimes
+	   go: "6 7/20" ... "6 18/20" ... "6 1/20" because
+	   the depth=7 message hasn't arrived yet. */
+	printf("%d ",iteration_depth); 
+
+	/* Output stats on root moves only */
+        for (left=0,mvp=last[0];mvp<last[1];mvp++) 
+          if (!searched_this_root_move[mvp-last[0]]) left++;
+        printf("%d %d\n",left,last[1]-last[0]);
+
+	/* Hm... a "return" seemed the only thing that worked here */
+	return;
+      }
+      
+      for (j=1;j<strlen(input);j++)
+        if (input[j] == ' ') {
+          input[j]='=';
+          break;
+        }
+      for (;j<strlen(input);j++)
+        if (input[j] == ' ') {
+          input[j]='/';
+          break;
+        }
       result=Option(input);
       if (result == 2) {
         if (thinking)
@@ -177,7 +240,7 @@ void Interrupt(int ply)
   */
       else if (!result) {
         if (pondering) {
-          temp=InputMoveICS(input,0,ChangeSide(root_wtm),1,1);
+          temp=InputMove(input,0,ChangeSide(root_wtm),1,1);
           if (temp) {
             if ((From(temp) == From(ponder_move)) &&
                 (To(temp) == To(ponder_move)) &&
@@ -196,15 +259,16 @@ void Interrupt(int ply)
           else if (!strcmp(input,"go") || !strcmp(input,"move")) {
             abort_search=1;
           }
-          else Print(0,"illegal move 7.\n");
+          else Print(0,"illegal move.\nquit\n");
         }
       }
       if (!strstr(input,"otim") && !strstr(input,"time")) break;
     }
     if (deferred) strcpy(input,save_command);
+    fflush(log_file);
   }
   else if (ics) {
-    for (i=0;i<2;i++) {
+    for (i=0;i<9;i++) {
       scanf("%s",input);
       if (!strcmp(input,"?")) {
         if (thinking) {
@@ -212,6 +276,7 @@ void Interrupt(int ply)
           abort_search=1;
         }
       }
+      else if (!strcmp(input,"eot")) break;
       else {
         result=Option(input);
         if (result == 2) {
@@ -220,11 +285,13 @@ void Interrupt(int ply)
           else {
             abort_search=1;
             analyze_move_read=1;
+            break;
           }
         }
         else if ((result != 1) && analyze_mode) {
           abort_search=1;
           analyze_move_read=1;
+          break;
         }
         else if (!result) {
 /*
@@ -258,31 +325,47 @@ void Interrupt(int ply)
             else if (!strcmp(input,"go") || !strcmp(input,"move")) {
               abort_search=1;
             }
-            else Print(0,"illegal move 8.\n");
+            else Print(0,"illegal move.\n");
           }
           else
            Print(0,"unknown command/command not legal now.\n");
         }
       }
     }
+    fflush(log_file);
   }
 }
 /*
 ********************************************************************************
 *                                                                              *
-*   InterruptSignal() is used to catch SIGINT which is used by xboard when the *
-*   operator wants crafty to "move right now".  if not pondering, all that's   *
-*   necessary is to set the appropriate abort flag(s) and exit, resetting the  *
-*   signal handler to trap the next SIGINT.                                    *
+*   SignalInterrupt() is used to catch SIGINT and SIGTERM which are used by    *
+*   Xboard.  SIGINT is used when the operator clicks the "move now" button,    *
+*   while SIGTERM is used to detect when Crafty is terminating.                *
 *                                                                              *
 ********************************************************************************
 */
-void InterruptSignal(int sig_type)
+void SignalInterrupt(int signal_type)
 {
-  if (thinking) {
-    time_abort=1;
-    abort_search=1;
+  switch (signal_type) {
+  case SIGINT:
+    if (xboard) {
+      if (thinking) {
+        time_abort=1;
+        abort_search=1;
+      }
+      signal(SIGINT,SignalInterrupt);
+      break;
+    }
+  case SIGTERM:
+    if (learning&book_learning && moves_out_of_book)
+      LearnBook(crafty_is_white,last_search_value,0,0,1);
+    if (book_file) fclose(book_file);
+    if (book_lrn_file) fclose(book_lrn_file);
+    if (books_file) fclose(books_file);
+    if (history_file) fclose(history_file);
+    if (position_file) fclose(position_file);
+    if (position_lrn_file) fclose(position_lrn_file);
+    if (log_file) fclose(log_file);
+    exit(1);
   }
-
-  signal(SIGINT,InterruptSignal);
 }

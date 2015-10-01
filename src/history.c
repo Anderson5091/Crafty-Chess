@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
 /* last modified 02/12/96 */
@@ -52,21 +51,21 @@ void HistoryBest(int ply, int depth, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (killer_move[ply][0] == pv[ply].path[ply]) killer_move_count[ply][0]++;
-  else if (killer_move[ply][1] == pv[ply].path[ply]) {
-    killer_move_count[ply][1]++;
-    if (killer_move_count[ply][0] < killer_move_count[ply][1]) {
-      temp=killer_move_count[ply][0];
-      killer_move_count[ply][0]=killer_move_count[ply][1];
-      killer_move_count[ply][1]=temp;
-      temp=killer_move[ply][0];
-      killer_move[ply][0]=killer_move[ply][1];
-      killer_move[ply][1]=temp;
+  if (killer_move1[ply] == pv[ply].path[ply]) killer_count1[ply]++;
+  else if (killer_move2[ply] == pv[ply].path[ply]) {
+    killer_count2[ply]++;
+    if (killer_count1[ply] < killer_count2[ply]) {
+      temp=killer_count1[ply];
+      killer_count1[ply]=killer_count2[ply];
+      killer_count2[ply]=temp;
+      temp=killer_move1[ply];
+      killer_move1[ply]=killer_move2[ply];
+      killer_move2[ply]=temp;
     }
   }
   else {
-    killer_move_count[ply][1]=1;
-    killer_move[ply][1]=pv[ply].path[ply];
+    killer_count2[ply]=1;
+    killer_move2[ply]=pv[ply].path[ply];
   }
 }
 
@@ -103,20 +102,20 @@ void HistoryRefutation(int ply, int depth, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (killer_move[ply][0] == current_move[ply]) killer_move_count[ply][0]++;
-  else if (killer_move[ply][1] == current_move[ply]) {
-    killer_move_count[ply][1]++;
-    if (killer_move_count[ply][0] < killer_move_count[ply][1]) {
-      temp=killer_move_count[ply][0];
-      killer_move_count[ply][0]=killer_move_count[ply][1];
-      killer_move_count[ply][1]=temp;
-      temp=killer_move[ply][0];
-      killer_move[ply][0]=killer_move[ply][1];
-      killer_move[ply][1]=temp;
+  if (killer_move1[ply] == current_move[ply]) killer_count1[ply]++;
+  else if (killer_move2[ply] == current_move[ply]) {
+    killer_count2[ply]++;
+    if (killer_count1[ply] < killer_count2[ply]) {
+      temp=killer_count1[ply];
+      killer_count1[ply]=killer_count2[ply];
+      killer_count2[ply]=temp;
+      temp=killer_move1[ply];
+      killer_move1[ply]=killer_move2[ply];
+      killer_move2[ply]=temp;
     }
   }
   else {
-    killer_move_count[ply][1]=1;
-    killer_move[ply][1]=current_move[ply];
+    killer_count2[ply]=1;
+    killer_move2[ply]=current_move[ply];
   }
 }

@@ -1,17 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 11/27/95 */
+/* last modified 03/07/97 */
 /*
 ********************************************************************************
 *                                                                              *
 *   Swap() is used to analyze capture moves to see whether or not they appear  *
 *   to be profitable.  the basic algorithm is extremely fast since it uses the *
-*   from.attack[] bit-boards to determine which squares are attacking [target] *
-*   square.                                                                    *
+*   bitmaps to determine which squares are attacking the [target] square.      *
 *                                                                              *
 *   the algorithm is quite simple.  using the attack bitmaps, we enumerate all *
 *   the pieces that are attacking [target] for either side.  then we simply    *
@@ -30,7 +28,7 @@ int Swap(int source, int target, int wtm)
 {
   register BITBOARD attacks;
   register int attacked_piece;
-  register int square;
+  register int square, direction;
   register int sign, color, next_capture=1;
   int swap_list[32];
 /*
@@ -44,21 +42,12 @@ int Swap(int source, int target, int wtm)
 /*
  ----------------------------------------------------------
 |                                                          |
-|   if the side-to-move isn't attacking <target> then we   |
-|   are done.                                              |
-|                                                          |
- ----------------------------------------------------------
-*/
-  if (!And(attacks, wtm ? WhitePieces: BlackPieces)) return(0);
-/*
- ----------------------------------------------------------
-|                                                          |
 |   initialize by placing the piece on <target> first in   |
 | the list as it is being captured to start things off.    |
 |                                                          |
  ----------------------------------------------------------
 */
-  attacked_piece=piece_values[abs(PieceOnSquare(target))];
+  attacked_piece=p_values[PieceOnSquare(target)+7];
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -70,9 +59,10 @@ int Swap(int source, int target, int wtm)
   color=ChangeSide(wtm);
   swap_list[0]=attacked_piece;
   sign=-1;
-  attacked_piece=piece_values[abs(PieceOnSquare(source))];
+  attacked_piece=p_values[PieceOnSquare(source)+7];
   Clear(source,attacks);
-  if (directions[target][source]) attacks=SwapXray(attacks,source,target);
+  direction=directions[target][source];
+  if (direction) attacks=SwapXray(attacks,source,direction);
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -125,9 +115,10 @@ int Swap(int source, int target, int wtm)
  ------------------------------------------------
 */
     swap_list[next_capture]=swap_list[next_capture-1]+sign*attacked_piece;
-    attacked_piece=piece_values[abs(PieceOnSquare(square))];
+    attacked_piece=p_values[PieceOnSquare(square)+7];
     Clear(square,attacks);
-    if (directions[target][square]) attacks=SwapXray(attacks,square,target);
+    direction=directions[target][square];
+    if (direction) attacks=SwapXray(attacks,square,direction);
     next_capture++;
     sign=-sign;
     color=ChangeSide(color);
@@ -169,34 +160,33 @@ int Swap(int source, int target, int wtm)
 *                                                                              *
 ********************************************************************************
 */
-BITBOARD SwapXray(BITBOARD attacks, int from, int to)
+BITBOARD SwapXray(BITBOARD attacks, int from, int direction)
 {
-  register BITBOARD indirect;
-  switch (directions[to][from]) {
+  switch (direction) {
   case 1: 
-    indirect=And(And(AttacksRank(from),RooksQueens),mask_plus1dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksRank(from),RooksQueens),plus1dir[from])));
   case 7: 
-    indirect=And(And(AttacksDiaga1(from),BishopsQueens),mask_plus7dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksDiaga1(from),BishopsQueens),plus7dir[from])));
   case 8: 
-    indirect=And(And(AttacksFile(from),RooksQueens),mask_plus8dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksFile(from),RooksQueens),plus8dir[from])));
   case 9: 
-    indirect=And(And(AttacksDiagh1(from),BishopsQueens),mask_plus9dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksDiagh1(from),BishopsQueens),plus9dir[from])));
   case -1: 
-    indirect=And(And(AttacksRank(from),RooksQueens),mask_minus1dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksRank(from),RooksQueens),minus1dir[from])));
   case -7: 
-    indirect=And(And(AttacksDiaga1(from),BishopsQueens),mask_minus7dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksDiaga1(from),BishopsQueens),minus7dir[from])));
   case -8: 
-    indirect=And(And(AttacksFile(from),RooksQueens),mask_minus8dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksFile(from),RooksQueens),minus8dir[from])));
   case -9: 
-    indirect=And(And(AttacksDiagh1(from),BishopsQueens),mask_minus9dir[from]);
-    return(Or(attacks,indirect));
+    return(Or(attacks,
+              And(And(AttacksDiagh1(from),BishopsQueens),minus9dir[from])));
   }
   return(attacks);
 }

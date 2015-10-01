@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "types.h"
-#include "function.h"
+#include "chess.h"
 #include "data.h"
 
-/* last modified 08/27/96 */
+/* last modified 04/16/97 */
 /*
 ********************************************************************************
 *                                                                              *
@@ -38,11 +37,11 @@ void ResignOrDraw(int value, int wtm)
 /*
  ----------------------------------------------------------
 |                                                          |
-|   first check to see if the increment is 8 seconds or    |
+|   first check to see if the increment is 2 seconds or    |
 |   more.  if so, then the game is being played slowly     |
 |   enough that a draw offer or resignation is worth       |
 |   consideration.  otherwise, if the opponent has at      |
-|   least 2 minutes left, he can probably play the draw    |
+|   least 30 seconds left, he can probably play the draw   |
 |   or win out.                                            |
 |                                                          |
 |   if the value is below the resignation threshold, and   |
@@ -52,9 +51,12 @@ void ResignOrDraw(int value, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  if ((tc_increment > 2) || (tc_time_remaining_opponent >= 30)) {
+  if ((tc_increment > 2) || (tc_time_remaining_opponent >= 3000)) {
     if (resign) {
-      if (value < -resign*PAWN_VALUE) {
+      if (value < -(MATE-15)) {
+        if (++resign_counter >= resign_count) returnv=1;
+      }
+      else if (value<-resign*PAWN_VALUE && value>-(MATE-100)) {
         if (++resign_counter >= resign_count) returnv=1;
       }
       else resign_counter=0;
@@ -73,14 +75,13 @@ void ResignOrDraw(int value, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (draw)
-    if ((value == DrawScore()) && (last_move_in_book < move_number-3)) {
-      if (++draw_counter >= draw_count) {
-        draw_counter=0;
-        returnv=2;
-      }
+  if (value==DrawScore() && moves_out_of_book>3) {
+    if (++draw_counter >= draw_count) {
+      draw_counter=0;
+      returnv=2;
     }
-    else draw_counter=0;
+  }
+  else draw_counter=0;
 /*
  ----------------------------------------------------------
 |                                                          |
@@ -90,12 +91,16 @@ void ResignOrDraw(int value, int wtm)
 |                                                          |
  ----------------------------------------------------------
 */
-  if (returnv == 1)
+  if (returnv == 1) {
+    if (learning&book_learning && moves_out_of_book) LearnBook(crafty_is_white,0,0,0,1);
     if (!ics && !xboard) Print(0,"\nCrafty resigns.\n\n");
     else if (xboard) Print(0,"\nresign\n");
     else Print(0,"\n*resign\n");
-  if (returnv == 2)
+  }
+  if (returnv == 2) {
+    if (learning&book_learning && moves_out_of_book) LearnBook(crafty_is_white,0,0,0,1);
     if (!ics && !xboard) Print(0,"\nCrafty offers a draw.\n\n");
     else if (xboard) Print(0,"\ndraw\n");
     else Print(0,"\n*draw\n");
+  }
 }

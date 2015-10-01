@@ -733,12 +733,6 @@ typedef struct gamS
 	struct gamS *gam_next;          /* next game */
 	} gamT, *gamptrT;
 
-/* tablebase file storage directory name */
-
-#if (!defined(TBDIR))
-#define TBDIR "TB"
-#endif
-
 /* tablebase byte entry semispan length */
 
 #define tbbe_ssL (((bit << byteW) - 4) / 2)

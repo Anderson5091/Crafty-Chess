@@ -37,6 +37,8 @@ generic PC running Linux 1.3.20 and using the gcc 2.7.0 compiler.
 /* EPD routine prototypes (host independent) */
 
 #include "epd.h"
+#include "chess.h"
+#include "data.h"
 
 /* ASCII character constants */
 
@@ -6958,7 +6960,7 @@ indexT
 EPDTBGenIndex(tbptrT classptr, posvT posv)
 {
 indexT index;
-liT factor;
+liT factor=0;
 posvT nposv;
 cT c;
 siT i;
@@ -6997,7 +6999,7 @@ indexT
 EPDTBGenInvertIndex(tbptrT classptr, posvT posv)
 {
 indexT index;
-liT factor;
+liT factor=0;
 posvT nposv;
 cT c, invc;
 siT i;
@@ -7131,7 +7133,7 @@ if (slot == -1)
 	tbcv[slot].tbc_inuse = 1;
 	tbcv[slot].tbc_tbid = tbid;
 	tbcv[slot].tbc_c = c;
-	fnptr = EPDTBClassFileName(TBDIR, tbid, c);
+	fnptr = EPDTBClassFileName(tb_path, tbid, c);
 	tbcv[slot].tbc_fptr = fopen(fnptr, "rb");
 	EPDStringFree(fnptr);
 	};
@@ -7167,7 +7169,7 @@ siT flag;
 fptrT fptr;
 charptrT fnptr;
 
-fnptr = EPDTBClassFileName(TBDIR, tbid, c);
+fnptr = EPDTBClassFileName(tb_path, tbid, c);
 fptr = fopen(fnptr, "rb");
 EPDStringFree(fnptr);
 if (fptr == NULL)
